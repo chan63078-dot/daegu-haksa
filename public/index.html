@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#1f5c46">
+  <title>나의 학습 페이지</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="lib/app.css">
+  <style>
+    .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 60px; }
+    .hero { background: var(--brand); color: var(--brand-ink); border-radius: 20px; padding: 22px 22px 20px; }
+    .hero .faint { color: color-mix(in srgb, var(--brand-ink) 72%, transparent); }
+    .hero h1 { font-size: 24px; margin: 6px 0 4px; }
+    .sec { margin-top: 16px; }
+    .day { display: flex; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line-2); }
+    .day:first-child { border-top: none; }
+    .day .d { width: 52px; flex: none; text-align: center; }
+    .day .d b { display: block; font-size: 20px; line-height: 1.1; }
+    .day.today .d b { color: var(--accent); }
+    .step { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; }
+    .step .dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); flex: none; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; }
+    .step.done .dot { background: var(--brand); border-color: var(--brand); }
+    .step.now .dot { border-color: var(--accent); }
+    .step.now .t { color: var(--accent); }
+    .exam { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line-2); }
+    .exam:first-child { border-top: none; }
+    .exam .dd { min-width: 64px; text-align: center; font-weight: 800; color: var(--blue); background: var(--blue-soft); border-radius: 10px; padding: 8px 6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap" id="app"><div class="empty">불러오는 중…</div></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="lib/util.js"></script>
+  <script src="lib/seed.js"></script>
+  <script src="lib/store.js"></script>
+  <script>
+  (function () {
+    const { esc, fmt, today, addDays, dday, DAYS, ATT } = U;
+    const app = document.getElementById('app');
+    const token = new URLSearchParams(location.search).get('t');
+    const C = Store.config;
+    let data;
+
+    function notFound(msg) {
+      app.innerHTML = `<div class="card card-pad" style="margin-top:40px;text-align:center"><div class="brand-mark" style="margin:0 auto 12px">대</div><h2 style="font-size:18px">${esc(msg)}</h2><p class="faint">담당 멘토에게 새 링크를 요청하세요.${C.CONTACT ? `<br>문의 ${esc(C.CONTACT)}` : ''}</p></div>`;
+    }
+
+    function render() {
+      const s = data.student;
+      const t = today();
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(t, i);
+        const cls = data.classes.filter(c => U.classOn(c, d));
+        const meet = data.meetings.filter(m => m.date === d);
+        if (cls.length || meet.length) days.push({ d, cls, meet });
+      }
+      const road = s.roadmap || [];
+      const nowIdx = road.findIndex(r => !r.done);
+      const done = road.filter(r => r.done).length;
+      const att = data.attendance;
+      const r = att.length ? Math.round(att.filter(a => a.state !== 'absent').length / att.length * 100) : null;
+      const exams = data.exams.filter(e => e.examDate >= t).sort((a, b) => a.examDate < b.examDate ? -1 : 1);
+      const tasks = data.tasks.slice().sort((a, b) => (a.done - b.done) || ((a.due || '9') < (b.due || '9') ? -1 : 1));
+      const certs = (s.certs || []);
+
+      app.innerHTML = `
+      <div class="row" style="margin-bottom:14px"><span class="brand-mark">대</span><b>${esc(C.ACADEMY_NAME || '')}</b></div>
+      <section class="hero">
+        <div class="faint">${fmt(t)} · 나의 학습 페이지</div>
+        <h1>${esc(s.name)}님, 안녕하세요</h1>
+        <div>${esc(s.goal || '')}</div>
+        ${s.intro ? `<p class="faint" style="margin:10px 0 0">${esc(s.intro)}</p>` : ''}
+        <div class="row" style="margin-top:16px;gap:20px">
+          <div><div class="faint">출석률</div><b style="font-size:22px">${r == null ? '-' : r + '%'}</b></div>
+          <div><div class="faint">로드맵</div><b style="font-size:22px">${done}/${road.length}</b></div>
+          <div><div class="faint">남은 할 일</div><b style="font-size:22px">${tasks.filter(k => !k.done).length}</b></div>
+        </div>
+      </section>
+
+      <section class="card sec"><div class="card-head"><h3>앞으로 7일 일정</h3></div><div class="card-body">
+        ${days.length ? days.map(x => `<div class="day ${x.d === t ? 'today' : ''}"><div class="d"><span class="faint">${x.d === t ? '오늘' : DAYS[U.dow(x.d)]}</span><b>${Number(x.d.slice(8))}</b></div><div class="grow">
+          ${x.cls.map(c => `<div><b>${esc(c.name)}</b><div class="faint">${esc(c.start)}~${esc(c.end)} · ${esc(c.room || '')}</div></div>`).join('')}
+          ${x.meet.map(m => `<div style="margin-top:4px"><span class="pill amber">면담</span> ${esc(m.time || '')} ${esc(m.topic || '')}</div>`).join('')}
+        </div></div>`).join('') : '<div class="empty">7일 안에 예정된 수업이 없어요</div>'}
+        <p class="faint" style="margin-bottom:0">수업 날짜는 휴강·보강에 따라 바뀔 수 있어요.</p>
+      </div></section>
+
+      ${exams.length ? `<section class="card sec"><div class="card-head"><h3>시험 일정</h3></div><div class="card-body">
+        ${exams.map(e => `<div class="exam"><div class="dd">${dday(e.examDate)}</div><div class="grow"><b>${esc(e.name)}</b><div class="faint">시험 ${fmt(e.examDate)}${e.regEnd >= t ? ` · 접수 ${fmt(e.regStart)}~${fmt(e.regEnd)}` : ''}${e.resultDate ? ` · 발표 ${fmt(e.resultDate)}` : ''}</div></div></div>`).join('')}
+      </div></section>` : ''}
+
+      <section class="card sec"><div class="card-head"><h3>할 일</h3><span class="faint">끝내면 체크하세요</span></div><div class="card-body">
+        ${tasks.length ? `<div class="list">${tasks.map(k => `<label class="li check"><input type="checkbox" data-task="${esc(k.id)}" ${k.done ? 'checked' : ''}><span class="grow" style="${k.done ? 'text-decoration:line-through;color:var(--ink-3)' : ''}">${esc(k.title)}</span>${k.due ? `<span class="pill ${!k.done && k.due < t ? 'red' : 'outline'}">${fmt(k.due)}</span>` : ''}</label>`).join('')}</div>` : '<div class="empty">지금은 할 일이 없어요</div>'}
+      </div></section>
+
+      ${road.length ? `<section class="card sec"><div class="card-head"><h3>나의 로드맵</h3><span class="faint">${Math.round(done / road.length * 100)}%</span></div><div class="card-body">
+        <div class="meter" style="margin-bottom:10px"><i style="width:${done / road.length * 100}%"></i></div>
+        ${road.map((x, i) => `<div class="step ${x.done ? 'done' : i === nowIdx ? 'now' : ''}"><span class="dot">${x.done ? '✓' : ''}</span><div class="t" style="font-weight:${i === nowIdx ? 700 : 500}">${esc(x.title)}${i === nowIdx ? ' · 지금 단계' : ''}</div></div>`).join('')}
+      </div></section>` : ''}
+
+      ${certs.length ? `<section class="card sec"><div class="card-head"><h3>자격증</h3></div><div class="card-body"><div class="list">
+        ${certs.map(c => `<div class="li"><div class="main"><div class="t">${esc(c.name)}</div></div><span class="pill ${c.status === '합격' ? 'green' : c.status === '불합격' ? 'red' : 'amber'}">${esc(c.status)}</span></div>`).join('')}
+      </div></div></section>` : ''}
+
+      <p class="faint" style="text-align:center;margin-top:24px">이 링크는 ${esc(s.name)}님 전용이에요. 다른 사람과 공유하지 마세요.${C.CONTACT ? `<br>문의 ${esc(C.CONTACT)}` : ''}</p>`;
+    }
+
+    app.addEventListener('change', async e => {
+      const id = e.target.dataset.task;
+      if (!id) return;
+      try {
+        await Store.studentSetTask(token, id, e.target.checked);
+        const k = data.tasks.find(x => x.id === id);
+        if (k) k.done = e.target.checked;
+        render();
+      } catch (err) { e.target.checked = !e.target.checked; alert('저장하지 못했어요. 잠시 후 다시 시도해주세요.'); }
+    });
+
+    if (!token) return notFound('학생 전용 링크로 들어와 주세요');
+    Store.studentView(token).then(d => {
+      if (!d || !d.student) return notFound('열 수 없는 링크예요');
+      data = d;
+      document.title = `${d.student.name} · 나의 학습 페이지`;
+      render();
+    }).catch(() => notFound('잠시 연결이 원활하지 않아요'));
+  })();
+  </script>
+</body>
+</html>

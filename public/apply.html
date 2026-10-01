@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f5c46">
+  <title>상담 신청</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="lib/app.css">
+</head>
+<body>
+  <div class="login-wrap"><div class="login card card-pad" style="padding:28px" id="app">
+    <div class="row" style="gap:12px;margin-bottom:18px"><span class="brand-mark">대</span><div><h2 style="font-size:20px">상담 신청</h2><div class="faint" id="academy"></div></div></div>
+    <form class="form" id="f">
+      <div class="field"><label>이름</label><input class="in" name="name" required maxlength="30"></div>
+      <div class="field"><label>연락처</label><input class="in" name="phone" required inputmode="tel" placeholder="010-0000-0000" maxlength="20"></div>
+      <div class="field"><label>관심 과정</label><select class="in" name="interest">
+        <option>국비 지원 AI 과정</option><option>정보처리기사</option><option>SQLD · ADsP</option><option>파이썬 · 코딩 기초</option><option>취업 상담</option><option>기타</option>
+      </select></div>
+      <div class="field"><label>남길 말 (선택)</label><textarea class="in" name="memo" maxlength="500" placeholder="통화 가능한 시간 등"></textarea></div>
+      <label class="check"><input type="checkbox" name="agree" required>상담을 위해 이름과 연락처를 수집·이용하는 데 동의해요 (상담 종료 후 1년 보관)</label>
+      <button class="btn primary" type="submit">신청하기</button>
+    </form>
+  </div></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="lib/util.js"></script>
+  <script src="lib/seed.js"></script>
+  <script src="lib/store.js"></script>
+  <script>
+    document.getElementById('academy').textContent = Store.config.ACADEMY_NAME || '';
+    const f = document.getElementById('f');
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const v = Object.fromEntries(new FormData(f));
+      const btn = f.querySelector('button');
+      btn.disabled = true;
+      try {
+        await Store.submitLead({ name: v.name.trim(), phone: v.phone.trim(), interest: v.interest, memo: (v.memo || '').trim() });
+        document.getElementById('app').innerHTML = '<div style="text-align:center;padding:20px 0"><div class="brand-mark" style="margin:0 auto 14px">✓</div><h2 style="font-size:20px">신청이 접수됐어요</h2><p class="faint">담당자가 곧 연락드릴게요.</p></div>';
+      } catch (err) {
+        btn.disabled = false;
+        alert('접수하지 못했어요. 잠시 후 다시 시도해주세요.');
+      }
+    };
+  </script>
+</body>
+</html>
