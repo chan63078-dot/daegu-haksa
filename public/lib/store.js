@@ -5,7 +5,7 @@
   const C = window.HAKSA_CONFIG || {};
   const COLS = ['teams', 'staff', 'students', 'classes', 'attendance', 'notes', 'meetings', 'tasks', 'exams', 'leads', 'logs'];
   const STUDENT_SCOPED = ['attendance', 'notes', 'meetings', 'tasks'];
-  const LS_KEY = 'daegu-haksa-v1';
+  const LS_KEY = 'daegu-haksa-v2';  // 데모 데이터 구조가 바뀌면 숫자를 올림
   const LS_ME = 'daegu-haksa-me';
   const live = !!(C.SUPABASE_URL && C.SUPABASE_ANON_KEY);
 
@@ -41,11 +41,16 @@
     return { student_id: null, mentor_id: null, team_id: null };
   }
 
+  const divisionOf = teamId => (db.teams.find(t => t.id === teamId) || {}).division || null;
+
   // 데모 모드에서도 실제 모드와 같은 범위만 보이게
   function canSeeStudent(s) {
     if (!me || !s) return false;
     if (me.role === 'admin') return true;
-    if (me.role === 'lead') return s.teamId === me.teamId || s.mentorId === me.id;
+    if (s.mentorId === me.id) return true;
+    if (me.role === 'head') { const d = divisionOf(me.teamId); return !!d && divisionOf(s.teamId) === d; }
+    if (me.role === 'lead') return !!me.teamId && s.teamId === me.teamId;
+    return false;
     return s.mentorId === me.id;
   }
   function visible(col) {
@@ -105,6 +110,7 @@
 
     me: () => me,
     canSeeStudent,
+    divisionOf,
 
     async login(email, password) {
       const { data, error } = await sb.auth.signInWithPassword({ email, password });

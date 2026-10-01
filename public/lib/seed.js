@@ -4,16 +4,26 @@ window.HAKSA_SEED = function (db, { uid, newToken }) {
   const d = n => U.addDays(t, n);
   const now = new Date().toISOString();
 
-  const team1 = { id: 'team-1', name: '1팀' };
-  const team2 = { id: 'team-2', name: '2팀' };
-  db.teams = [team1, team2];
-
+  // 조직 구조는 실제와 같게(사업부 2 × 팀 2), 이름은 모두 가상
+  db.teams = [
+    { id: 'team-1', name: '1-1팀', division: '1사업부' },
+    { id: 'team-12', name: '1-2팀', division: '1사업부' },
+    { id: 'team-2', name: '2-1팀', division: '2사업부' },
+    { id: 'team-22', name: '2-2팀', division: '2사업부' }
+  ];
+  const P = (id, name, role, title, teamId) => ({ id, name, email: id.replace('st-', '') + '@daegu.example', role, title, teamId, active: true });
   db.staff = [
-    { id: 'st-admin', name: '이서준', email: 'director@daegu.example', role: 'admin', teamId: null, active: true },
-    { id: 'st-lead1', name: '박지현', email: 'lead1@daegu.example', role: 'lead', teamId: 'team-1', active: true },
-    { id: 'st-m1', name: '최민호', email: 'mentor1@daegu.example', role: 'mentor', teamId: 'team-1', active: true },
-    { id: 'st-lead2', name: '정유나', email: 'lead2@daegu.example', role: 'lead', teamId: 'team-2', active: true },
-    { id: 'st-m2', name: '한도윤', email: 'mentor2@daegu.example', role: 'mentor', teamId: 'team-2', active: true }
+    P('st-admin', '이서준', 'admin', '원장', null),
+    P('st-head1', '강태호', 'head', '부장', 'team-1'),
+    P('st-m1', '최민호', 'mentor', '경력멘토', 'team-1'),
+    P('st-m4', '오지훈', 'mentor', '신인멘토', 'team-1'),
+    P('st-lead1', '박지현', 'lead', '팀장', 'team-12'),
+    P('st-m5', '송하린', 'mentor', '신인멘토', 'team-12'),
+    P('st-head2', '윤성민', 'head', '부장', 'team-2'),
+    P('st-m2', '한도윤', 'mentor', '선임멘토', 'team-2'),
+    P('st-m6', '장예은', 'mentor', '신인멘토', 'team-2'),
+    P('st-lead2', '정유나', 'lead', '팀장', 'team-22'),
+    P('st-m7', '문준혁', 'mentor', '경력멘토', 'team-22')
   ];
   const teamOf = id => (db.staff.find(s => s.id === id) || {}).teamId || null;
 
@@ -57,7 +67,9 @@ window.HAKSA_SEED = function (db, { uid, newToken }) {
       employment: { company: '경북대학교 대학원', role: '석사 과정', startDate: d(-30), insured: false, memo: '진학' }
     }),
     S('s13', '조민서', '취준 20대', '비전공', 'dropped', 'st-m2', [], '웹 개발', { createdAt: d(-90) + 'T09:00:00.000Z' }),
-    S('s14', '배준호', '대학 3·4학년', '전공', 'active', 'st-lead1', ['c-ip'], '정보처리기사 실기', { createdAt: d(-12) + 'T09:00:00.000Z' })
+    S('s14', '배준호', '대학 3·4학년', '전공', 'active', 'st-lead1', ['c-ip'], '정보처리기사 실기', { createdAt: d(-12) + 'T09:00:00.000Z' }),
+    S('s15', '남궁윤', '10대', '비전공', 'active', 'st-m4', ['c-py'], '고등학생 코딩 기초 · 정보올림피아드', { createdAt: d(-6) + 'T09:00:00.000Z' }),
+    S('s16', '표지안', '취준 20대', '비전공', 'gov', 'st-m7', ['c-kdt'], 'AI 데이터 라벨링 → 데이터 분석', { createdAt: d(-18) + 'T09:00:00.000Z' })
   ];
 
   // 상태 이력 (리포트 집계용)

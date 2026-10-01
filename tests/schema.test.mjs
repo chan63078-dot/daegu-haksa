@@ -23,15 +23,19 @@ const J = o => JSON.stringify(o).replace(/'/g, "''");
 const ins = (col, id, data, extra = {}) => db.query(
   `insert into items (collection,id,data,student_id,mentor_id,team_id) values ($1,$2,$3,$4,$5,$6)`,
   [col, id, data, extra.s || null, extra.m || null, extra.t || null]);
-await ins('teams', 't1', { name: '1팀' }); await ins('teams', 't2', { name: '2팀' });
+await ins('teams', 't1', { name: '1-1팀', division: '1사업부' }); await ins('teams', 't2', { name: '2-1팀', division: '2사업부' });
+await ins('teams', 't3', { name: '1-2팀', division: '1사업부' });
 await ins('staff', 'admin', { name: '원장', email: 'admin@x.com', role: 'admin', active: true });
 await ins('staff', 'lead1', { name: '팀장1', email: 'lead1@x.com', role: 'lead', teamId: 't1', active: true });
 await ins('staff', 'm1', { name: '멘토1', email: 'm1@x.com', role: 'mentor', teamId: 't1', active: true });
 await ins('staff', 'm2', { name: '멘토2', email: 'm2@x.com', role: 'mentor', teamId: 't2', active: true });
+await ins('staff', 'head1', { name: '부장1', email: 'head1@x.com', role: 'head', teamId: 't1', active: true });
+await ins('staff', 'm3', { name: '멘토3', email: 'm3@x.com', role: 'mentor', teamId: 't3', active: true });
 await ins('staff', 'gone', { name: '퇴사자', email: 'gone@x.com', role: 'admin', active: false });
 await ins('classes', 'c1', { name: '파이썬', days: [1, 3] });
 await ins('students', 's1', { name: '학생1', token: 'tok-s1-aaaaaaaa', classIds: ['c1'], phone: '010' }, { s: 's1', m: 'm1', t: 't1' });
 await ins('students', 's2', { name: '학생2', token: 'tok-s2-bbbbbbbb' }, { s: 's2', m: 'm2', t: 't2' });
+await ins('students', 's5', { name: '학생5', token: 'tok-s5-cccccccc' }, { s: 's5', m: 'm3', t: 't3' });
 await ins('notes', 'n1', { studentId: 's1', body: '상담1' }, { s: 's1' });
 await ins('notes', 'n2', { studentId: 's2', body: '상담2' }, { s: 's2' });
 await ins('tasks', 'k1', { studentId: 's1', title: '할일', done: false, shared: true }, { s: 's1' });
@@ -48,7 +52,8 @@ const ids = async col => (await db.query(`select id from items where collection=
 const tryq = async (sql, p) => { try { const r = await db.query(sql, p); return { ok: true, n: r.affectedRows ?? r.rows.length }; } catch (e) { return { ok: false, e: e.message }; } };
 
 // 읽기 범위
-ok('원장: 학생 전체', await as('admin@x.com', () => ids('students')) === 's1,s2');
+ok('원장: 학생 전체', await as('admin@x.com', () => ids('students')) === 's1,s2,s5');
+ok('부장1: 1사업부(1-1팀·1-2팀) 전체', await as('head1@x.com', () => ids('students')) === 's1,s5');
 ok('팀장1: 자기 팀만', await as('lead1@x.com', () => ids('students')) === 's1');
 ok('멘토1: 담당만', await as('m1@x.com', () => ids('students')) === 's1');
 ok('멘토2: 담당만', await as('m2@x.com', () => ids('students')) === 's2');
@@ -74,6 +79,12 @@ r = await as('m1@x.com', () => tryq(`insert into items (collection,id,data) valu
 ok('멘토: 직원 못 만듦(권한 상승 차단)', !r.ok, r.e);
 r = await as('m1@x.com', () => tryq(`update items set data = data || '{"role":"admin"}' where collection='staff' and id='m1'`));
 ok('멘토: 자기 권한 못 올림', !r.ok || r.n === 0, r.e || 'rows ' + r.n);
+r = await as('head1@x.com', () => tryq(`insert into items (collection,id,data,student_id,mentor_id,team_id) values ('students','s6','{}','s6','m3','t3')`));
+ok('부장1: 사업부 안 다른 팀 학생 추가', r.ok, r.e);
+r = await as('head1@x.com', () => tryq(`insert into items (collection,id,data,student_id,mentor_id,team_id) values ('students','s7','{}','s7','m2','t2')`));
+ok('부장1: 다른 사업부 학생 못 만듦', !r.ok, r.e);
+r = await as('head1@x.com', () => tryq(`insert into items (collection,id,data) values ('staff','y','{"email":"y@x.com","role":"mentor"}')`));
+ok('부장: 직원 등록은 못 함', !r.ok, r.e);
 r = await as('lead1@x.com', () => tryq(`insert into items (collection,id,data) values ('classes','c2','{}')`));
 ok('팀장: 수업 추가', r.ok, r.e);
 r = await as('m1@x.com', () => tryq(`insert into items (collection,id,data) values ('classes','c3','{}')`));

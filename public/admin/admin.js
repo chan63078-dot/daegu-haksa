@@ -15,7 +15,9 @@
   // ---------- 도우미 ----------
   const me = () => Store.me();
   const isAdmin = () => me() && me().role === 'admin';
-  const isLead = () => me() && (me().role === 'lead' || me().role === 'admin');
+  const isLead = () => me() && ['lead', 'head', 'admin'].includes(me().role);
+  const roleLabel = U.roleLabel;
+  const teamFull = id => { const t = Store.get('teams', id); return t ? (t.division ? `${t.division} ${t.name}` : t.name) : '팀 없음'; };
   const staff = () => Store.all('staff').filter(s => s.active !== false);
   const staffName = id => (Store.get('staff', id) || {}).name || '미지정';
   const teamName = id => (Store.get('teams', id) || {}).name || '팀 없음';
@@ -147,7 +149,7 @@
           <p class="faint" style="margin:0">계정이 없거나 비밀번호를 잊었으면 원장님께 요청하세요.</p>
         </form>`
       : `<p class="faint" style="margin:0 0 12px">데모 모드예요. 어떤 사람으로 들어갈지 고르면 그 권한으로 보여요.</p>
-        <div class="staff-pick">${Store.all('staff').map(s => `<button data-act="demo-login" data-id="${s.id}"><span class="av">${initial(s.name)}</span><span class="grow"><b>${esc(s.name)}</b><br><span class="faint">${esc(ROLES[s.role])}${s.teamId ? ' · ' + esc(teamName(s.teamId)) : ''}</span></span></button>`).join('')}</div>`;
+        <div class="staff-pick">${Store.all('staff').map(s => `<button data-act="demo-login" data-id="${s.id}"><span class="av">${initial(s.name)}</span><span class="grow"><b>${esc(s.name)}</b><br><span class="faint">${esc(roleLabel(s))}${s.teamId ? ' · ' + esc(teamFull(s.teamId)) : ''}</span></span></button>`).join('')}</div>`;
     app.innerHTML = `<div class="login-wrap"><div class="login card card-pad" style="padding:28px">
       <div class="row" style="gap:12px;margin-bottom:18px"><span class="brand-mark">대</span><div><h2 style="font-size:20px">학사관리 로그인</h2><div class="faint">${esc(C.ACADEMY_NAME || '')}</div></div></div>
       ${msg ? `<p class="pill red" style="height:auto;padding:6px 10px;margin:0 0 12px">${esc(msg)}</p>` : ''}
@@ -192,7 +194,7 @@
       return `<div style="margin-top:10px"><div class="row" style="justify-content:space-between"><b>${esc(c.name)}</b><span class="faint">${esc(c.start)}~${esc(c.end)} · ${esc(c.room || '')}</span></div><div class="list">${marks}</div></div>`;
     }).join('');
 
-    return `<div class="page-head"><div><h1>${hello}, ${esc(m.name)}님</h1><p>${fmtFull(t)} ${DAYS[U.dow(t)]}요일 · ${ui.homeMine || m.role === 'mentor' ? '내 담당 학생' : m.role === 'admin' ? '지점 전체' : esc(teamName(m.teamId)) + ' 전체'} 기준</p></div>
+    return `<div class="page-head"><div><h1>${hello}, ${esc(m.name)}님</h1><p>${fmtFull(t)} ${DAYS[U.dow(t)]}요일 · ${ui.homeMine || m.role === 'mentor' ? '내 담당 학생' : m.role === 'admin' ? '지점 전체' : m.role === 'head' ? esc(Store.divisionOf(m.teamId) || '사업부') + ' 전체' : esc(teamName(m.teamId)) + ' 전체'} 기준</p></div>
       <div class="row">${m.role !== 'mentor' ? `<button class="chip ${ui.homeMine ? 'on' : ''}" data-act="home-mine">내 담당만</button>` : ''}<button class="btn primary" data-act="student-new">+ 학생 추가</button></div></div>
 
     <div class="grid g4">
@@ -277,7 +279,7 @@
       ${field('연락처', input('phone', s.phone, 'inputmode="tel" placeholder="010-0000-0000"'))}
       ${field('카테고리', `<select class="in" name="category">${opt('', '선택', s.category)}${CATEGORIES.map(c => opt(c, c, s.category)).join('')}</select>`)}
       ${field('전공 여부', `<select class="in" name="track">${TRACKS.map(c => opt(c, c, s.track)).join('')}</select>`)}
-      ${field('담당', `<select class="in" name="mentorId" ${canMentor ? '' : 'disabled'}>${staff().map(x => opt(x.id, `${x.name} (${ROLES[x.role]})`, s.mentorId || me().id)).join('')}</select>`)}
+      ${field('담당', `<select class="in" name="mentorId" ${canMentor ? '' : 'disabled'}>${staff().map(x => opt(x.id, `${x.name} (${roleLabel(x)} · ${teamName(x.teamId)})`, s.mentorId || me().id)).join('')}</select>`)}
       ${field('상태', `<select class="in" name="status">${STATUS.map(x => opt(x.key, x.label, s.status || 'active')).join('')}</select>`)}
       ${field('한 줄 목표', input('goal', s.goal, 'placeholder="예: 정보처리기사 → 공기업 전산직"'), 'full')}
       ${classes.length ? field('수강 수업', `<div class="chips">${classes.map(c => `<label class="check" style="margin-right:10px"><input type="checkbox" name="classIds" data-multi value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}>${esc(c.name)}</label>`).join('')}</div>`, 'full') : ''}
@@ -346,7 +348,8 @@
         if (get('status') && !st) warn.push(`상태 '${get('status')}' → 수강중`);
         const mv = get('mentor').toLowerCase();
         const m = mv ? people.find(p => (p.email || '').toLowerCase() === mv || p.name === get('mentor')) : null;
-        const allowed = p => p && (isAdmin() || (me().role === 'lead' && p.teamId === me().teamId) || p.id === me().id);
+        const allowed = p => p && (isAdmin() || p.id === me().id || (me().role === 'lead' && p.teamId === me().teamId)
+          || (me().role === 'head' && !!Store.divisionOf(me().teamId) && Store.divisionOf(p.teamId) === Store.divisionOf(me().teamId)));
         if (m && allowed(m)) o.mentorId = m.id;
         else { o.mentorId = me().id; if (mv) warn.push(m ? `${m.name}님은 배정 권한 밖 → 나에게` : `담당자 '${get('mentor')}' 없음 → 나에게`); }
         o.classIds = [];
@@ -405,7 +408,7 @@
 
   // 직원에게 보낼 사용 안내 (비밀번호는 넣지 않음)
   function guideText(p) {
-    const scope = p.role === 'admin' ? '지점 전체 학생과 직원 관리' : p.role === 'lead' ? '우리 팀 학생 전체' : '내 담당 학생';
+    const scope = U.SCOPE[p.role] || U.SCOPE.mentor;
     return [`[${Store.config.ACADEMY_NAME || '학사관리'} 학사관리 사용 안내]`, '',
       `1. 주소: ${ROOT}admin/`,
       `2. 아이디: ${p.email}`,
@@ -791,7 +794,7 @@
     </div>
     <section class="card tbl-wrap" style="margin-top:16px"><div class="card-head"><h3>담당자별 성과</h3><span class="faint">상태 변경 이력 기준</span></div><div class="card-body">
       <table class="tbl"><thead><tr><th>담당</th><th class="hide-m">팀</th><th class="num">진행 중</th><th class="num">신규</th><th class="num">합격</th><th class="num">취업·진학</th><th class="num">이탈</th><th class="num">출석률</th></tr></thead><tbody>
-      ${rows.map(r => `<tr><td><b>${esc(r.m.name)}</b> <span class="faint">${esc(ROLES[r.m.role])}</span></td><td class="hide-m">${esc(teamName(r.m.teamId))}</td><td class="num">${r.ongoing}</td><td class="num">${r.neu}</td><td class="num">${r.pass}</td><td class="num">${r.job}</td><td class="num">${r.drop}</td><td class="num">${r.rate == null ? '-' : r.rate + '%'}</td></tr>`).join('')}
+      ${rows.map(r => `<tr><td><b>${esc(r.m.name)}</b> <span class="faint">${esc(roleLabel(r.m))}</span></td><td class="hide-m">${esc(teamFull(r.m.teamId))}</td><td class="num">${r.ongoing}</td><td class="num">${r.neu}</td><td class="num">${r.pass}</td><td class="num">${r.job}</td><td class="num">${r.drop}</td><td class="num">${r.rate == null ? '-' : r.rate + '%'}</td></tr>`).join('')}
       </tbody></table></div></section>`;
   }
 
@@ -804,16 +807,16 @@
     return `<div class="page-head"><div><h1>설정</h1><p>팀 · 직원 · 백업 · 수정 이력</p></div></div>
     <div class="grid g2" style="align-items:start">
       <section class="card"><div class="card-head"><h3>내 계정</h3></div><div class="card-body">
-        <div class="row"><span class="av">${initial(m.name)}</span><div class="grow"><b>${esc(m.name)}</b><div class="faint">${esc(m.email)} · ${esc(ROLES[m.role])}${m.teamId ? ' · ' + esc(teamName(m.teamId)) : ''}</div></div></div>
+        <div class="row"><span class="av">${initial(m.name)}</span><div class="grow"><b>${esc(m.name)}</b><div class="faint">${esc(m.email)} · ${esc(roleLabel(m))}${m.teamId ? ' · ' + esc(teamFull(m.teamId)) : ''}</div></div></div>
         <div class="row" style="margin-top:14px"><button class="btn" data-act="staff-guide" data-id="${m.id}">사용 안내</button>${Store.live ? '<button class="btn" data-act="pw-change">비밀번호 바꾸기</button>' : ''}<button class="btn" data-act="logout">로그아웃</button></div>
-        <p class="faint">보이는 범위: ${m.role === 'admin' ? '지점 전체 학생, 직원 관리' : m.role === 'lead' ? '우리 팀 학생 전체' : '내 담당 학생만'}</p>
+        <p class="faint">보이는 범위: ${esc(U.SCOPE[m.role] || U.SCOPE.mentor)}</p>
       </div></section>
       <section class="card"><div class="card-head"><h3>팀</h3>${isAdmin() ? '<button class="btn sm" data-act="team-new">+ 팀 추가</button>' : ''}</div><div class="card-body"><div class="list">
-        ${teams.map(t => `<div class="li"><div class="main"><div class="t">${esc(t.name)}</div><div class="s">${people.filter(p => p.teamId === t.id && p.active !== false).map(p => esc(p.name)).join(', ') || '팀원 없음'}</div></div>${isAdmin() ? `<button class="btn ghost sm" data-act="team-edit" data-id="${t.id}">이름 변경</button><button class="btn ghost sm danger" data-act="team-del" data-id="${t.id}">삭제</button>` : ''}</div>`).join('') || '<div class="faint">팀이 없어요</div>'}
+        ${sortBy(teams, t => (t.division || '') + t.name).map(t => `<div class="li"><div class="main"><div class="t">${t.division ? `<span class="faint">${esc(t.division)}</span> ` : ''}${esc(t.name)}</div><div class="s">${people.filter(p => p.teamId === t.id && p.active !== false).map(p => esc(p.name)).join(', ') || '팀원 없음'}</div></div>${isAdmin() ? `<button class="btn ghost sm" data-act="team-edit" data-id="${t.id}">수정</button><button class="btn ghost sm danger" data-act="team-del" data-id="${t.id}">삭제</button>` : ''}</div>`).join('') || '<div class="faint">팀이 없어요</div>'}
       </div></div></section>
       <section class="card span2" style="grid-column:1/-1"><div class="card-head"><h3>직원</h3>${isAdmin() ? '<button class="btn sm primary" data-act="staff-new">+ 직원 등록</button>' : ''}</div><div class="card-body tbl-wrap">
         <table class="tbl"><thead><tr><th>이름</th><th>이메일</th><th>권한</th><th>팀</th><th class="num">담당 학생</th><th></th></tr></thead><tbody>
-        ${people.map(p => `<tr style="${p.active === false ? 'opacity:.5' : ''}"><td><b>${esc(p.name)}</b>${p.active === false ? ' <span class="pill">비활성</span>' : ''}</td><td>${esc(p.email)}</td><td>${esc(ROLES[p.role])}</td><td>${esc(p.teamId ? teamName(p.teamId) : '-')}</td><td class="num">${ongoing(students().filter(s => s.mentorId === p.id)).length}</td><td style="white-space:nowrap">${isAdmin() ? `<button class="btn ghost sm" data-act="staff-guide" data-id="${p.id}">안내 문구</button><button class="btn ghost sm" data-act="staff-edit" data-id="${p.id}">수정</button>` : ''}</td></tr>`).join('')}
+        ${people.map(p => `<tr style="${p.active === false ? 'opacity:.5' : ''}"><td><b>${esc(p.name)}</b>${p.active === false ? ' <span class="pill">비활성</span>' : ''}</td><td>${esc(p.email)}</td><td>${esc(roleLabel(p))}<div class="faint">${esc(ROLES[p.role])}</div></td><td>${esc(p.teamId ? teamFull(p.teamId) : '-')}</td><td class="num">${ongoing(students().filter(s => s.mentorId === p.id)).length}</td><td style="white-space:nowrap">${isAdmin() ? `<button class="btn ghost sm" data-act="staff-guide" data-id="${p.id}">안내 문구</button><button class="btn ghost sm" data-act="staff-edit" data-id="${p.id}">수정</button>` : ''}</td></tr>`).join('')}
         </tbody></table>
         ${Store.live && isAdmin() ? '<p class="faint">직원을 등록한 뒤, Supabase 관리 화면(Authentication → Users)에서 같은 이메일로 로그인 계정을 만들어 주세요.</p>' : ''}
       </div></section>
@@ -832,21 +835,42 @@
     openModal(isNew ? '직원 등록' : '직원 수정', `<div class="form cols">
       ${field('이름', input('name', p.name, 'required'))}
       ${field('이메일 (로그인 아이디)', input('email', p.email, 'type="email" required'))}
-      ${field('권한', `<select class="in" name="role">${Object.keys(ROLES).map(k => opt(k, ROLES[k], p.role || 'mentor')).join('')}</select>`)}
-      ${field('팀', `<select class="in" name="teamId">${opt('', '팀 없음', p.teamId)}${Store.all('teams').map(t => opt(t.id, t.name, p.teamId)).join('')}</select>`)}
+      ${field('권한 (보이는 범위)', `<select class="in" name="role">${Object.keys(ROLES).map(k => opt(k, ROLES[k], p.role || 'mentor')).join('')}</select>`)}
+      ${field('직함 (화면 표시용)', input('title', p.title, 'placeholder="예: 경력멘토, 신인멘토, 부장"'))}
+      ${field('팀', `<select class="in" name="teamId">${opt('', '팀 없음', p.teamId)}${Store.all('teams').map(t => opt(t.id, teamFull(t.id), p.teamId)).join('')}</select>`, 'full')}
       ${isNew ? '' : `<label class="check full"><input type="checkbox" name="inactive" ${p.active === false ? 'checked' : ''}>퇴사·비활성 (로그인 불가, 기록은 남음)</label>`}
-    </div><p class="faint">멘토는 담당 학생만, 팀장은 자기 팀 학생 전체, 원장·총괄은 모두 볼 수 있어요.</p>`, {
+    </div><p class="faint">멘토는 담당 학생만, 팀장은 자기 팀, 부장은 자기 사업부 전체, 원장·총괄은 모두 볼 수 있어요. 부장은 소속 팀으로 사업부가 정해져요.</p>`, {
       okText: isNew ? '등록' : '저장',
       onOk: async root => {
         const v = vals(root);
         if (!v.name || !/^\S+@\S+\.\S+$/.test(v.email)) { toast('이름과 이메일을 확인해주세요'); return false; }
-        if ((v.role === 'lead' || v.role === 'mentor') && !v.teamId) { toast('팀장·멘토는 팀을 골라주세요'); return false; }
-        const obj = Object.assign({}, p, { name: v.name, email: v.email.toLowerCase(), role: v.role, teamId: v.teamId || null, active: !v.inactive });
+        if (v.role !== 'admin' && !v.teamId) { toast('부장·팀장·멘토는 팀을 골라주세요'); return false; }
+        const obj = Object.assign({}, p, { name: v.name, email: v.email.toLowerCase(), role: v.role, title: v.title, teamId: v.teamId || null, active: !v.inactive });
         await Store.put('staff', obj);
         await Store.log(isNew ? 'staff-create' : 'staff-update', obj.id, `직원 ${isNew ? '등록' : '수정'}: ${obj.name} (${ROLES[obj.role]}${obj.active ? '' : ', 비활성'})`);
         // 담당 학생의 팀 정보 갱신
         for (const s of Store.all('students').filter(s => s.mentorId === obj.id)) await Store.put('students', s);
         toast('저장했어요');
+        render();
+      }
+    });
+  }
+
+  function editTeam(t) {
+    const isNew = !t.id;
+    const divs = Array.from(new Set(Store.all('teams').map(x => x.division).filter(Boolean)));
+    openModal(isNew ? '팀 추가' : '팀 수정', `<div class="form cols">
+      ${field('사업부', input('division', t.division, `placeholder="예: 1사업부" list="div-list"`) + `<datalist id="div-list">${divs.map(d => `<option value="${esc(d)}">`).join('')}</datalist>`)}
+      ${field('팀 이름', input('name', t.name, 'placeholder="예: 1-1팀"'))}
+    </div><p class="faint">같은 사업부에 속한 팀은 그 사업부 부장이 모두 볼 수 있어요.</p>`, {
+      okText: isNew ? '추가' : '저장',
+      onOk: async root => {
+        const v = vals(root);
+        if (!v.name) { toast('팀 이름을 넣어주세요'); return false; }
+        await Store.put('teams', Object.assign({}, t, { name: v.name, division: v.division }));
+        await Store.log(isNew ? 'team-create' : 'team-update', t.id || '', `팀 ${isNew ? '추가' : '수정'}: ${v.division ? v.division + ' ' : ''}${v.name}`);
+        // 팀의 사업부가 바뀌면 학생 권한 열도 다시 저장
+        for (const s of Store.all('students').filter(s => s.teamId === t.id)) await Store.put('students', s);
         render();
       }
     });
@@ -1072,13 +1096,11 @@
     'report-months': el => { ui.reportMonths = Number(el.dataset.v); render(); },
     'report-csv': () => {
       const rows = [['담당', '권한', '팀', '진행 중', '신규', '자격증 합격', '취업·진학', '이탈', '출석률']];
-      (ui._reportRows || []).forEach(r => rows.push([r.m.name, ROLES[r.m.role], teamName(r.m.teamId), r.ongoing, r.neu, r.pass, r.job, r.drop, r.rate == null ? '' : r.rate + '%']));
+      (ui._reportRows || []).forEach(r => rows.push([r.m.name, roleLabel(r.m), teamFull(r.m.teamId), r.ongoing, r.neu, r.pass, r.job, r.drop, r.rate == null ? '' : r.rate + '%']));
       U.download(`성과리포트_최근${ui.reportMonths}개월_${today()}.csv`, U.csv(rows));
     },
-    'team-new': () => openModal('팀 추가', field('팀 이름', input('name', '', 'placeholder="예: 3팀"')), {
-      okText: '추가', onOk: async root => { const v = vals(root); if (!v.name) return false; await Store.put('teams', { name: v.name }); render(); }
-    }),
-    'team-edit': el => { const t = Store.get('teams', el.dataset.id); openModal('팀 이름 변경', field('팀 이름', input('name', t.name)), { onOk: async root => { t.name = vals(root).name || t.name; await Store.put('teams', t); render(); } }); },
+    'team-new': () => editTeam({}),
+    'team-edit': el => editTeam(Store.get('teams', el.dataset.id)),
     'team-del': async el => {
       const t = Store.get('teams', el.dataset.id);
       if (Store.all('staff').some(p => p.teamId === t.id && p.active !== false)) return toast('팀원이 있는 팀은 삭제할 수 없어요. 먼저 팀원을 옮겨주세요.');

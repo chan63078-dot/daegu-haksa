@@ -31,7 +31,13 @@ language sql stable security definer set search_path = public as $$
   limit 1
 $$;
 
--- 이 학생을 볼 수 있는지: 원장·총괄은 전체, 팀장은 자기 팀, 멘토는 담당 학생만
+-- 팀이 속한 사업부
+create or replace function public.haksa_division(tid text) returns text
+language sql stable security definer set search_path = public as $$
+  select nullif(data->>'division', '') from items where collection = 'teams' and id = tid
+$$;
+
+-- 이 학생을 볼 수 있는지: 원장·총괄은 전체, 부장은 자기 사업부, 팀장은 자기 팀, 멘토는 담당 학생만
 create or replace function public.haksa_can_see_student(sid text) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (
@@ -42,6 +48,7 @@ language sql stable security definer set search_path = public as $$
         me.m->>'role' = 'admin'
         or s.mentor_id = me.m->>'id'
         or (me.m->>'role' = 'lead' and s.team_id = me.m->>'teamId')
+        or (me.m->>'role' = 'head' and public.haksa_division(s.team_id) = public.haksa_division(me.m->>'teamId'))
       )
   )
 $$;
@@ -63,10 +70,11 @@ language sql stable security definer set search_path = public as $$
   select case
     when public.haksa_me() is null then false
     when col in ('staff', 'teams') then public.haksa_me()->>'role' = 'admin'
-    when col = 'classes' then public.haksa_me()->>'role' in ('admin', 'lead')
+    when col = 'classes' then public.haksa_me()->>'role' in ('admin', 'head', 'lead')
     when col = 'students' then
       public.haksa_me()->>'role' = 'admin'
       or (public.haksa_me()->>'role' = 'lead' and tid = public.haksa_me()->>'teamId')
+      or (public.haksa_me()->>'role' = 'head' and public.haksa_division(tid) = public.haksa_division(public.haksa_me()->>'teamId'))
       or mid = public.haksa_me()->>'id'
     when col in ('attendance', 'notes', 'meetings', 'tasks') then public.haksa_can_see_student(sid)
     else true  -- exams, leads, logs

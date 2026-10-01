@@ -9,9 +9,12 @@
     { key: 'dropped', label: '중도 이탈', tone: 'red' }
   ];
   const ONGOING = ['active', 'gov'];
-  const CATEGORIES = ['대학 1·2학년', '대학 3·4학년', '대학 휴학', '취준 20대', '취준 30대 이상', '재직자'];
+  const CATEGORIES = ['10대', '대학 1·2학년', '대학 3·4학년', '대학 휴학', '취준 20대', '취준 30대 이상', '재직자'];
   const TRACKS = ['전공', '비전공'];
-  const ROLES = { admin: '원장·총괄', lead: '팀장', mentor: '멘토' };
+  const ROLES = { admin: '원장·총괄', head: '부장(사업부)', lead: '팀장', mentor: '멘토' };
+  // 화면에 보일 직함: 직함(경력멘토 등)이 있으면 그것, 없으면 권한 이름
+  const roleLabel = p => (p && (p.title || ROLES[p.role])) || '';
+  const SCOPE = { admin: '지점 전체 학생과 직원 관리', head: '우리 사업부 학생 전체', lead: '우리 팀 학생 전체', mentor: '내 담당 학생' };
   const LEAD_STATUS = [
     { key: 'new', label: '신규', tone: 'amber' },
     { key: 'contacted', label: '상담 중', tone: 'blue' },
@@ -83,5 +86,5 @@
     catch (e) { return new TextDecoder('euc-kr').decode(buf); }
   }
 
-  window.U = { parseCSV, readTextFile, STATUS, ONGOING, CATEGORIES, TRACKS, ROLES, LEAD_STATUS, ATT, DAYS, pad, iso, parse, today, addDays, diffDays, dow, fmt, fmtFull, dday, esc, classOn, statusOf, leadStatusOf, csv, download };
+  window.U = { roleLabel, SCOPE, parseCSV, readTextFile, STATUS, ONGOING, CATEGORIES, TRACKS, ROLES, LEAD_STATUS, ATT, DAYS, pad, iso, parse, today, addDays, diffDays, dow, fmt, fmtFull, dday, esc, classOn, statusOf, leadStatusOf, csv, download };
 })();
