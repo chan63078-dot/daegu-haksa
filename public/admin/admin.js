@@ -839,12 +839,19 @@
       ${field('직함 (화면 표시용)', input('title', p.title, 'placeholder="예: 경력멘토, 신인멘토, 부장"'))}
       ${field('팀', `<select class="in" name="teamId">${opt('', '팀 없음', p.teamId)}${Store.all('teams').map(t => opt(t.id, teamFull(t.id), p.teamId)).join('')}</select>`, 'full')}
       ${isNew ? '' : `<label class="check full"><input type="checkbox" name="inactive" ${p.active === false ? 'checked' : ''}>퇴사·비활성 (로그인 불가, 기록은 남음)</label>`}
-    </div><p class="faint">멘토는 담당 학생만, 팀장은 자기 팀, 부장은 자기 사업부 전체, 원장·총괄은 모두 볼 수 있어요. 부장은 소속 팀으로 사업부가 정해져요.</p>`, {
+    </div><p class="faint">멘토는 담당 학생만, 팀장은 자기 팀, 부장은 자기 사업부 전체, 원장·총괄은 모두 볼 수 있어요. 부장은 소속 팀으로 사업부가 정해져요.</p>
+    ${Store.live ? `<p class="faint">${isNew ? '등록한 뒤 Supabase 관리 화면(Authentication → Users → Add user)에서 같은 이메일로 로그인 계정을 만들어 주세요.' : '이메일을 바꾸면 Supabase 관리 화면의 로그인 계정 이메일도 같이 바꿔야 로그인돼요.'}</p>` : ''}`, {
       okText: isNew ? '등록' : '저장',
+      extra: isNew || p.id === me().id ? '' : `<button class="btn danger" data-act="staff-del" data-id="${p.id}">삭제</button>`,
       onOk: async root => {
         const v = vals(root);
+        v.email = (v.email || '').toLowerCase();
         if (!v.name || !/^\S+@\S+\.\S+$/.test(v.email)) { toast('이름과 이메일을 확인해주세요'); return false; }
         if (v.role !== 'admin' && !v.teamId) { toast('부장·팀장·멘토는 팀을 골라주세요'); return false; }
+        if (Store.all('staff').some(x => x.id !== p.id && (x.email || '').toLowerCase() === v.email)) { toast('이미 등록된 이메일이에요'); return false; }
+        // 원장·총괄이 한 명도 남지 않게 되는 변경은 막기 (직원 관리를 아무도 못 하게 됨)
+        const admins = Store.all('staff').filter(x => x.role === 'admin' && x.active !== false && x.id !== p.id);
+        if (p.role === 'admin' && (v.role !== 'admin' || v.inactive) && !admins.length) { toast('원장·총괄이 최소 한 명은 있어야 해요'); return false; }
         const obj = Object.assign({}, p, { name: v.name, email: v.email.toLowerCase(), role: v.role, title: v.title, teamId: v.teamId || null, active: !v.inactive });
         await Store.put('staff', obj);
         await Store.log(isNew ? 'staff-create' : 'staff-update', obj.id, `직원 ${isNew ? '등록' : '수정'}: ${obj.name} (${ROLES[obj.role]}${obj.active ? '' : ', 비활성'})`);
@@ -1109,6 +1116,18 @@
     },
     'staff-new': () => editStaff({}),
     'staff-edit': el => editStaff(Store.get('staff', el.dataset.id)),
+    'staff-del': async el => {
+      document.querySelectorAll('.modal-bg').forEach(m => m.remove());
+      const p = Store.get('staff', el.dataset.id);
+      const mine = Store.all('students').filter(s => s.mentorId === p.id);
+      if (mine.length) return toast(`${p.name}님 담당 학생 ${mine.length}명을 다른 담당자로 옮긴 뒤 삭제하세요. 기록을 남기려면 '퇴사·비활성'을 쓰세요.`);
+      if (p.role === 'admin' && !Store.all('staff').some(x => x.id !== p.id && x.role === 'admin' && x.active !== false)) return toast('원장·총괄이 최소 한 명은 있어야 해요');
+      if (!(await confirmBox(`${p.name}님을 직원 명단에서 삭제할까요? 이 사람은 더 이상 앱에 들어올 수 없어요.`, '삭제'))) return;
+      await Store.del('staff', p.id);
+      await Store.log('staff-delete', p.id, `직원 삭제: ${p.name} (${p.email})`);
+      toast(Store.live ? '삭제했어요. Supabase 로그인 계정도 지워주세요.' : '삭제했어요');
+      render();
+    },
     backup: () => U.download(`학사관리_백업_${today()}.json`, JSON.stringify(Store.exportAll(), null, 2), 'application/json'),
     'demo-reset': async () => {
       if (!(await confirmBox('데모 데이터를 처음 상태로 되돌릴까요? 이 브라우저에서 바꾼 내용이 모두 사라져요.', '되돌리기'))) return;

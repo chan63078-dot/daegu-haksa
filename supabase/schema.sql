@@ -165,9 +165,10 @@ grant execute on function public.student_view(text) to anon, authenticated;
 grant execute on function public.student_set_task(text, text, boolean) to anon, authenticated;
 grant execute on function public.submit_lead(text, text, text, text) to anon, authenticated;
 
--- 5) 첫 관리자 등록 (이메일과 이름을 바꿔서 실행)
---    이후 직원 등록은 앱의 설정 → 직원에서 하면 됩니다.
+-- 5) 팀·직원 등록
+--    대구지점 실제 명단은 supabase/staff.local.sql 에 있어요(공개 저장소에는 올리지 않음).
+--    이 스크립트 다음에 그 파일을 SQL Editor에서 한 번 실행하세요.
+--    다른 지점에서 쓸 때는 아래 예시처럼 원장·총괄 한 명만 넣고, 나머지는 앱 설정 → 직원에서 등록하면 됩니다.
 -- insert into public.items (collection, id, data) values
---   ('teams', 'team-1', '{"name": "1팀"}'),
 --   ('staff', 'st-admin', '{"name": "원장 이름", "email": "director@example.com", "role": "admin", "teamId": null, "active": true}')
 -- on conflict do nothing;

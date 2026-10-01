@@ -1,2 +1,5 @@
 node_modules/
 .DS_Store
+# 실제 명단 등 공개하면 안 되는 파일
+*.local.sql
+*.local.*
