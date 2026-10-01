@@ -2,7 +2,10 @@
 
 코리아AI아카데미 대구점의 수강생 관리 앱입니다. 멘토·팀장이 쓰는 **관리자 화면**, 학생이 본인 정보만 보는 **학생 화면**, 홈페이지에 거는 **상담 신청 폼**으로 되어 있어요.
 
-웹사이트 파일은 모두 `public/` 폴더에 있어요. 배포할 때는 **`public/` 폴더만** 올립니다.
+웹사이트 파일은 모두 `public/` 폴더에 있어요.
+
+**배포 주소**: https://chan63078-dot.github.io/daegu-haksa/admin/
+`main` 브랜치에 푸시하면 GitHub Actions가 권한 검증 테스트를 돌리고, 통과하면 `public/` 폴더를 GitHub Pages에 자동 배포합니다. 테스트가 실패하면 배포되지 않아요.
 
 | 주소 | 화면 |
 | --- | --- |
@@ -28,7 +31,7 @@ python -m http.server 8765 --directory public
 4. Authentication → Users → Add user 에서 같은 이메일로 계정을 만듭니다(Auto Confirm 체크).
 5. Authentication → Providers → Email 에서 "Allow new users to sign up"을 끄세요. 직원 계정은 관리자만 만들 수 있게 합니다.
 6. Project Settings → API 의 Project URL과 anon public 키를 `public/config.js`에 넣습니다. **service_role 키는 절대 넣지 마세요.**
-7. `public/` 폴더를 Netlify에 올립니다(Netlify 대시보드에 폴더를 끌어다 놓으면 됩니다).
+7. 바꾼 `config.js`를 커밋·푸시하면 자동으로 배포됩니다. (anon 키는 공개되어도 되는 키이고, 데이터는 DB 권한 규칙이 지켜요.)
 8. 원장 계정으로 로그인해 설정 → 팀, 직원을 등록하고, 직원마다 4번처럼 로그인 계정을 만들어 줍니다.
 9. 설정 → 직원 → "안내 문구"를 눌러 직원에게 보낼 사용 안내를 복사합니다(임시 비밀번호는 따로 전달).
 10. 학생 → "엑셀로 등록"에서 양식 파일을 받아 학생을 한꺼번에 등록합니다. 한국어 엑셀에서 저장한 CSV도 그대로 읽어요.
