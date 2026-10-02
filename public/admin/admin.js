@@ -8,6 +8,7 @@
     stu: { q: '', status: 'ongoing', cat: '', mentor: '', view: 'list' },
     classArchived: false,
     examPast: false,
+    examQ: '',
     leadTab: 'open',
     reportMonths: 6,
     classView: 'cards',   // 'cards' | 'grid'
@@ -814,12 +815,24 @@
   function pageExams() {
     const t = today();
     const all = sortBy(Store.all('exams'), e => e.examDate);
-    const list = all.filter(e => ui.examPast ? examLast(e) < t : examLast(e) >= t);
+    // 검색: 띄어쓰기·대소문자 무시, 이름과 메모에서 찾기
+    const norm = x => String(x || '').toLowerCase().replace(/\s/g, '');
+    const q = norm(ui.examQ);
+    const hit = e => !q || norm(e.name).includes(q) || norm(e.memo).includes(q);
+    const inTab = e => ui.examPast ? examLast(e) < t : examLast(e) >= t;
+    const list = all.filter(e => inTab(e) && hit(e));
+    // 자격증 종류 바로가기 (이름 맨 앞 단어)
+    const family = e => String(e.name).split(/[\s(]/)[0];
+    const families = Array.from(new Set(all.filter(inTab).map(family))).filter(Boolean);
     const visibleIds = new Set(students().map(s => s.id));
     const step = (label, a, b) => `<div class="li"><span class="faint" style="width:64px">${label}</span><div class="main">${a ? fmt(a) : '-'}${b ? ' ~ ' + fmt(b) : ''}</div>${a && a >= t ? `<span class="pill outline">${dday(a)}</span>` : ''}</div>`;
     return `<div class="page-head"><div><h1>시험 일정</h1><p>자격증 시험과 응시 학생을 함께 관리해요</p></div>
       <div class="row">${isLead() ? '<button class="btn primary" data-act="exam-new">+ 시험 추가</button>' : ''}</div></div>
-    <div class="chips" style="margin-bottom:16px"><button class="chip ${!ui.examPast ? 'on' : ''}" data-act="exam-past" data-v="0">다가오는 시험</button><button class="chip ${ui.examPast ? 'on' : ''}" data-act="exam-past" data-v="1">지난 시험</button></div>
+    <div class="row" style="margin-bottom:12px">
+      <div class="chips"><button class="chip ${!ui.examPast ? 'on' : ''}" data-act="exam-past" data-v="0">다가오는 시험<b>${all.filter(e => examLast(e) >= t && hit(e)).length}</b></button><button class="chip ${ui.examPast ? 'on' : ''}" data-act="exam-past" data-v="1">지난 시험<b>${all.filter(e => examLast(e) < t && hit(e)).length}</b></button></div>
+      <input class="in" type="search" style="max-width:280px" placeholder="자격증 검색 (예: 네트워크관리사)" value="${esc(ui.examQ)}" data-input="exam-q">
+    </div>
+    ${families.length > 1 ? `<div class="chips" style="margin-bottom:16px">${families.map(f => `<button class="chip ${q && norm(f) === q ? 'on' : ''}" data-act="exam-family" data-v="${esc(f)}">${esc(f)}</button>`).join('')}${q ? '<button class="chip" data-act="exam-family" data-v="">전체 보기</button>' : ''}</div>` : ''}
     <div class="grid g3">${list.map(e => {
       const names = (e.studentIds || []).filter(id => visibleIds.has(id)).map(id => Store.get('students', id)).filter(Boolean);
       const regOpen = e.regStart <= t && t <= e.regEnd;
@@ -832,7 +845,7 @@
         <div class="chips" style="margin-top:6px">${names.map(s => `<a class="pill outline" href="#/students/${s.id}/certs" style="text-decoration:none">${esc(s.name)}</a>`).join('')}</div>
         ${isLead() ? `<div style="margin-top:12px"><button class="btn sm" data-act="exam-edit" data-id="${e.id}">수정</button></div>` : ''}
       </section>`;
-    }).join('') || '<div class="card empty">시험이 없어요</div>'}</div>
+    }).join('') || `<div class="card empty" style="grid-column:1/-1">${q ? `'${esc(ui.examQ)}'에 맞는 ${ui.examPast ? '지난 ' : ''}시험이 없어요` : '시험이 없어요'}</div>`}</div>
     <p class="faint" style="margin-top:16px">시험 기간이 여러 날이면 끝나는 날까지 '다가오는 시험'에 남아 있어요. 일정이 바뀌면 카드의 수정에서 고쳐주세요.</p>`;
   }
   function editExam(e) {
@@ -1345,6 +1358,7 @@
       U.download(`출결표_${c.name}_${v.from}_${v.to}.csv`, U.csv(rows));
     },
     'exam-past': el => { ui.examPast = el.dataset.v === '1'; render(); },
+    'exam-family': el => { ui.examQ = el.dataset.v; render(); },
     'exam-new': () => editExam({}),
     'exam-edit': el => editExam(Store.get('exams', el.dataset.id)),
     'exam-del': async el => {
@@ -1449,15 +1463,17 @@
     Promise.resolve(CH[el.dataset.change](el, e)).catch(err => { console.error(err); toast('처리하지 못했어요: ' + (err.message || err)); });
   });
   let qTimer;
+  const SEARCH = { 'stu-q': v => { ui.stu.q = v; }, 'exam-q': v => { ui.examQ = v; } };
   document.addEventListener('input', e => {
-    if (e.target.dataset.input !== 'stu-q') return;
+    const key = e.target.dataset.input;
+    if (!SEARCH[key]) return;
     clearTimeout(qTimer);
     qTimer = setTimeout(() => {
-      ui.stu.q = e.target.value;
+      SEARCH[key](e.target.value);
       const pos = e.target.selectionStart;
       render();
-      const inp = document.querySelector('[data-input="stu-q"]');
-      if (inp) { inp.focus(); inp.setSelectionRange(pos, pos); }
+      const inp = document.querySelector(`[data-input="${key}"]`);
+      if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos); } catch (err) {} }
     }, 200);
   });
   // 진행 보드 끌어 놓기
