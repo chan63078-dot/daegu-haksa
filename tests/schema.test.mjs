@@ -49,6 +49,8 @@ async function as(email, fn) {
   try { return await fn(); } finally { await db.exec('reset role'); }
 }
 const ids = async col => (await db.query(`select id from items where collection=$1 order by id`, [col])).rows.map(r => r.id).join(',');
+// 앱은 supabase-js upsert로 저장 → INSERT ... ON CONFLICT DO UPDATE (새 행에도 읽기 정책이 적용됨)
+const up = (col, id, data, s, m, t) => `insert into items (collection,id,data,student_id,mentor_id,team_id) values ('${col}','${id}','${JSON.stringify(data)}',${s ? `'${s}'` : 'null'},${m ? `'${m}'` : 'null'},${t ? `'${t}'` : 'null'}) on conflict (collection,id) do update set data=excluded.data, student_id=excluded.student_id, mentor_id=excluded.mentor_id, team_id=excluded.team_id`;
 const tryq = async (sql, p) => { try { const r = await db.query(sql, p); return { ok: true, n: r.affectedRows ?? r.rows.length }; } catch (e) { return { ok: false, e: e.message }; } };
 
 // 읽기 범위
@@ -95,6 +97,32 @@ r = await as('admin@x.com', () => tryq(`insert into items (collection,id,data) v
 ok('원장: 직원 등록', r.ok, r.e);
 r = await as('m1@x.com', () => tryq(`insert into items (collection,id,data) values ('logs','l2','{"detail":"y"}')`));
 ok('멘토: 이력 기록은 남김', r.ok, r.e);
+
+// upsert(앱 저장 방식)
+r = await as('admin@x.com', () => tryq(up('students', 'u1', { name: '새학생' }, 'u1', 'm1', 't1')));
+ok('upsert: 원장이 새 학생 추가', r.ok, r.e);
+r = await as('admin@x.com', () => tryq(up('students', 'u1', { name: '새학생-수정' }, 'u1', 'm1', 't1')));
+ok('upsert: 원장이 학생 수정', r.ok, r.e);
+r = await as('m1@x.com', () => tryq(up('students', 'u2', {}, 'u2', 'm1', 't1')));
+ok('upsert: 멘토가 내 담당 학생 추가', r.ok, r.e);
+r = await as('m1@x.com', () => tryq(up('students', 'u3', {}, 'u3', 'm2', 't2')));
+ok('upsert: 멘토가 남의 담당 학생 못 만듦', !r.ok, r.e);
+r = await as('lead1@x.com', () => tryq(up('students', 'u4', {}, 'u4', 'm1', 't1')));
+ok('upsert: 팀장이 팀 학생 추가', r.ok, r.e);
+r = await as('head1@x.com', () => tryq(up('students', 'u5', {}, 'u5', 'm3', 't3')));
+ok('upsert: 부장이 사업부 학생 추가', r.ok, r.e);
+r = await as('m1@x.com', () => tryq(up('notes', 'u6', { body: 'x' }, 's1')));
+ok('upsert: 멘토가 담당 학생 상담 기록', r.ok, r.e);
+r = await as('m1@x.com', () => tryq(up('notes', 'u7', { body: 'x' }, 's2')));
+ok('upsert: 멘토가 남의 학생 상담 기록 못 씀', !r.ok, r.e);
+r = await as('lead1@x.com', () => tryq(up('classes', 'u8', { name: '반' })));
+ok('upsert: 팀장이 수업 추가', r.ok, r.e);
+r = await as('m1@x.com', () => tryq(up('leads', 'u9', { name: '문의' })));
+ok('upsert: 멘토가 상담 문의 추가', r.ok, r.e);
+r = await as('m1@x.com', () => tryq(`insert into items (collection,id,data) values ('logs','u10','{}')`));
+ok('insert: 멘토가 수정 이력 남김', r.ok, r.e);
+r = await as('m1@x.com', () => tryq(up('staff', 'u11', { email: 'z@x.com', role: 'admin' })));
+ok('upsert: 멘토가 직원 못 만듦', !r.ok, r.e);
 
 // 학생 링크
 let v = await as(null, () => db.query(`select student_view('tok-s1-aaaaaaaa') v`));

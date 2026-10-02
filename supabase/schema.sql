@@ -37,28 +37,36 @@ language sql stable security definer set search_path = public as $$
   select nullif(data->>'division', '') from items where collection = 'teams' and id = tid
 $$;
 
--- 이 학생을 볼 수 있는지: 원장·총괄은 전체, 부장은 자기 사업부, 팀장은 자기 팀, 멘토는 담당 학생만
+-- 이 담당자·팀의 학생을 볼 수 있는지: 원장·총괄은 전체, 부장은 자기 사업부, 팀장은 자기 팀, 멘토는 담당 학생만
+-- (학생 행 자신의 담당자·팀 열로 판단 → 아직 저장 전인 새 학생도 판단 가능)
+create or replace function public.haksa_can_see_row(mid text, tid text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((
+    select me.m->>'role' = 'admin'
+        or mid = me.m->>'id'
+        or (me.m->>'role' = 'lead' and tid = me.m->>'teamId')
+        or (me.m->>'role' = 'head' and public.haksa_division(tid) = public.haksa_division(me.m->>'teamId'))
+    from (select public.haksa_me() as m) me
+    where me.m is not null
+  ), false)
+$$;
+
+-- 이미 저장된 학생을 볼 수 있는지 (상담 기록·출결 등 학생에 딸린 행용)
 create or replace function public.haksa_can_see_student(sid text) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (
-    select 1
-    from items s, (select public.haksa_me() as m) me
-    where s.collection = 'students' and s.id = sid and me.m is not null
-      and (
-        me.m->>'role' = 'admin'
-        or s.mentor_id = me.m->>'id'
-        or (me.m->>'role' = 'lead' and s.team_id = me.m->>'teamId')
-        or (me.m->>'role' = 'head' and public.haksa_division(s.team_id) = public.haksa_division(me.m->>'teamId'))
-      )
+    select 1 from items s
+    where s.collection = 'students' and s.id = sid and public.haksa_can_see_row(s.mentor_id, s.team_id)
   )
 $$;
 
--- 읽기 권한
-create or replace function public.haksa_read_ok(col text, sid text) returns boolean
+-- 읽기 권한 (앱은 upsert로 저장하므로 새 행에도 이 검사가 적용됨)
+create or replace function public.haksa_read_ok(col text, sid text, mid text, tid text) returns boolean
 language sql stable security definer set search_path = public as $$
   select case
     when public.haksa_me() is null then false
-    when col in ('students', 'attendance', 'notes', 'meetings', 'tasks') then public.haksa_can_see_student(sid)
+    when col = 'students' then public.haksa_can_see_row(mid, tid)
+    when col in ('attendance', 'notes', 'meetings', 'tasks') then public.haksa_can_see_student(sid)
     when col = 'logs' then public.haksa_me()->>'role' = 'admin'
     else true
   end
@@ -71,11 +79,7 @@ language sql stable security definer set search_path = public as $$
     when public.haksa_me() is null then false
     when col in ('staff', 'teams') then public.haksa_me()->>'role' = 'admin'
     when col = 'classes' then public.haksa_me()->>'role' in ('admin', 'head', 'lead')
-    when col = 'students' then
-      public.haksa_me()->>'role' = 'admin'
-      or (public.haksa_me()->>'role' = 'lead' and tid = public.haksa_me()->>'teamId')
-      or (public.haksa_me()->>'role' = 'head' and public.haksa_division(tid) = public.haksa_division(public.haksa_me()->>'teamId'))
-      or mid = public.haksa_me()->>'id'
+    when col = 'students' then public.haksa_can_see_row(mid, tid)
     when col in ('attendance', 'notes', 'meetings', 'tasks') then public.haksa_can_see_student(sid)
     else true  -- exams, leads, logs
   end
@@ -85,18 +89,19 @@ drop policy if exists items_select on public.items;
 drop policy if exists items_insert on public.items;
 drop policy if exists items_update on public.items;
 drop policy if exists items_delete on public.items;
+drop function if exists public.haksa_read_ok(text, text);  -- 이전 버전
 
 create policy items_select on public.items for select to authenticated
-  using (public.haksa_read_ok(collection, student_id));
+  using (public.haksa_read_ok(collection, student_id, mentor_id, team_id));
 create policy items_insert on public.items for insert to authenticated
   with check (public.haksa_write_ok(collection, student_id, mentor_id, team_id));
 create policy items_update on public.items for update to authenticated
-  using (public.haksa_read_ok(collection, student_id) and collection <> 'logs')
+  using (public.haksa_read_ok(collection, student_id, mentor_id, team_id) and collection <> 'logs')
   with check (public.haksa_write_ok(collection, student_id, mentor_id, team_id));
 create policy items_delete on public.items for delete to authenticated
   using (
     collection <> 'logs'
-    and public.haksa_read_ok(collection, student_id)
+    and public.haksa_read_ok(collection, student_id, mentor_id, team_id)
     and public.haksa_write_ok(collection, student_id, mentor_id, team_id)
   );
 

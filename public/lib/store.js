@@ -148,7 +148,8 @@
       }
       if (live) {
         const row = { collection: col, id: obj.id, data: obj, ...derived(col, obj), updated_by: me ? me.id : null };
-        const { error } = await sb.from('items').upsert(row);
+        // 수정 이력은 새로 쌓기만 하고, 원장·총괄만 읽을 수 있어서 upsert(읽기 검사 포함) 대신 insert
+        const { error } = col === 'logs' ? await sb.from('items').insert(row) : await sb.from('items').upsert(row);
         if (error) throw error;
       }
       const i = db[col].findIndex(r => r.id === obj.id);
@@ -215,6 +216,38 @@
       if (!loadLocal()) { window.HAKSA_SEED(db, { uid, newToken }); }
       db.leads.push({ id: uid(), name: f.name, phone: f.phone, interest: f.interest, memo: f.memo, source: '온라인 신청', status: 'new', createdAt: new Date().toISOString() });
       saveLocal();
+    },
+
+    // 직원 로그인 계정 관리 (원장·총괄 전용, 서버 함수 staff-admin)
+    async staffAccount(action, payload) {
+      if (live) {
+        const { data, error } = await sb.functions.invoke('staff-admin', { body: Object.assign({ action }, payload || {}) });
+        if (error) {
+          let msg = error.message, code = 'error';
+          try { const j = await error.context.json(); msg = j.message || msg; code = j.error || code; } catch (e) {}
+          if (/Failed to send|not found|404/i.test(msg)) { code = 'not-installed'; msg = '계정 관리 기능(staff-admin)이 Supabase에 아직 설치되지 않았어요.'; }
+          const err = new Error(msg); err.code = code; throw err;
+        }
+        return data;
+      }
+      // 데모: 이 브라우저에만 저장되는 가짜 계정 목록
+      const KEY = 'daegu-haksa-auth';
+      let map;
+      try { map = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+      if (!map) {
+        map = {};
+        db.staff.slice(0, -1).forEach((s, i) => { map[s.email.toLowerCase()] = { lastSignIn: i % 3 ? new Date(Date.now() - i * 864e5).toISOString() : null }; });
+      }
+      const save = () => { try { localStorage.setItem(KEY, JSON.stringify(map)); } catch (e) {} };
+      const email = ((payload && payload.email) || '').toLowerCase();
+      const bad = msg => { const e = new Error(msg); e.code = 'bad'; throw e; };
+      if (action === 'status') { save(); return { users: Object.keys(map).map(k => ({ email: k, lastSignIn: map[k].lastSignIn, confirmed: true })) }; }
+      if (action === 'create') { if (map[email]) bad('이미 로그인 계정이 있어요'); map[email] = { lastSignIn: null }; }
+      if (action === 'reset' && !map[email]) bad('로그인 계정이 없어요');
+      if (action === 'delete') delete map[email];
+      save();
+      await Store.log('account', email, `[데모] 로그인 계정 ${({ create: '생성', reset: '비밀번호 재설정', delete: '삭제' })[action]}: ${email}`);
+      return { ok: true };
     },
 
     exportAll() {
