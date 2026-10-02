@@ -39,8 +39,15 @@
   const classPeriod = c => (c.startDate ? `${fmt(c.startDate)}~${fmt(c.endDate)}` : '기간 미정');
   const classTime = c => `${(c.days || []).map(d => DAYS[d]).join('·') || '요일 미정'} ${esc(c.start || '')}~${esc(c.end || '')}`;
   // 최근에 등록한 학생이 위로 (등록 시각이 같으면 그룹웨어 학생 번호가 큰 쪽이 최근)
-  // 학생 삭제: 팀장 이상, 또는 자기 담당 학생
-  const canDeleteStudent = s => isLead() || s.mentorId === me().id;
+  // 학생 삭제는 팀장·부장·원장(승인권자)만. 멘토는 자기 담당 학생 삭제를 '요청'
+  const canDeleteStudent = () => isLead();
+  const canRequestDelete = s => !isLead() && s.mentorId === me().id;
+  const delPill = s => s.deleteRequest ? ' <span class="pill red" title="' + esc(`${s.deleteRequest.byName || ''}: ${s.deleteRequest.reason || ''}`) + '">삭제 요청</span>' : '';
+  function deleteButton(s) {
+    if (canDeleteStudent(s)) return `<button class="btn ghost sm danger" data-act="stu-delete" data-id="${s.id}">${s.deleteRequest ? '승인·삭제' : '삭제'}</button>${s.deleteRequest ? `<button class="btn ghost sm" data-act="del-reject" data-id="${s.id}">반려</button>` : ''}`;
+    if (canRequestDelete(s)) return s.deleteRequest ? `<button class="btn ghost sm" data-act="del-cancel" data-id="${s.id}">요청 취소</button>` : `<button class="btn ghost sm danger" data-act="del-request" data-id="${s.id}">삭제 요청</button>`;
+    return '';
+  }
   const newestFirst = list => sortBy(list, s => (s.createdAt || '') + String(s.gwNo || '').padStart(10, '0')).reverse();
   const sortBy = (arr, f) => arr.slice().sort((a, b) => (f(a) < f(b) ? -1 : f(a) > f(b) ? 1 : 0));
 
@@ -79,7 +86,7 @@
   }
   function confirmBox(msg, okText) {
     return new Promise(res => {
-      const bg = openModal('확인', `<p style="margin:0">${esc(msg)}</p>`, { okText: okText || '확인', danger: true, onOk: () => { res(true); } });
+      const bg = openModal('확인', `<p style="margin:0;white-space:pre-wrap">${esc(msg)}</p>`, { okText: okText || '확인', danger: true, onOk: () => { res(true); } });
       bg.addEventListener('click', e => { if (e.target === bg || e.target.closest('[data-x]')) res(false); });
     });
   }
@@ -248,6 +255,7 @@
     const weekMeet = meetings.filter(x => x.date <= addDays(t, 6)).length;
     const alerts = alertsFor(list);
     const monthNew = list.filter(s => (s.createdAt || '').slice(0, 7) === t.slice(0, 7)).length;
+    const delReqs = isLead() ? students().filter(s => s.deleteRequest) : [];
     const cohorts = cohortSuggestions(list);
     ui._cohorts = cohorts;
     const bAge = isAdmin() ? backupAge() : 0;
@@ -277,6 +285,8 @@
       <section class="card span2"><div class="card-head"><h3>챙겨야 할 학생</h3><span class="faint">면담 공백 · 후속 상담 · 할 일 지연 · 시험 접수·임박</span></div>
         <div class="card-body">${alerts.length ? alerts.slice(0, 20).map(a => `<a class="alert-row" href="#/students/${a.s.id}${a.title.includes('시험') || a.title.includes('접수') ? '/certs' : a.title.includes('할 일') ? '/certs' : '/notes'}"><span class="alert-dot ${a.tone}"></span><div class="grow"><b>${esc(a.s.name)}</b> <span class="muted">· ${esc(a.title)}</span><div class="faint">${esc(a.sub)} · 담당 ${esc(staffName(a.s.mentorId))}</div></div></a>`).join('') + (alerts.length > 20 ? `<div class="faint" style="padding-top:8px">외 ${alerts.length - 20}건</div>` : '') : '<div class="empty">지금 따로 챙길 학생이 없어요</div>'}</div></section>
       <div class="grid">
+        ${delReqs.length ? `<section class="card" style="border-color:var(--red)"><div class="card-head"><h3>삭제 요청</h3><span class="pill red">${delReqs.length}</span></div>
+          <div class="card-body"><div class="list">${delReqs.map(s => `<div class="li" style="align-items:flex-start"><div class="main"><a class="t" href="#/students/${s.id}" style="text-decoration:none">${esc(s.name)}</a><div class="s">요청 ${esc(s.deleteRequest.byName || '')} · ${fmt(s.deleteRequest.at)} · 담당 ${esc(staffName(s.mentorId))}</div><div class="s">사유: ${esc(s.deleteRequest.reason || '-')}</div></div><div class="row" style="flex-wrap:nowrap;gap:4px">${deleteButton(s)}</div></div>`).join('')}</div></div></section>` : ''}
         ${cohorts.length ? `<section class="card" style="border-color:var(--brand)"><div class="card-head"><h3>다음 기수 연결</h3><span class="pill green">${cohorts.length}</span></div>
           <div class="card-body"><div class="list">${cohorts.map((x, i) => `<div class="li" style="align-items:flex-start"><div class="main"><div class="t">${esc(x.from.name)}</div><div class="s">${fmt(x.from.endDate)} 종강 → ${esc(x.to.name)} ${fmt(x.to.startDate)} 개강</div><div class="s">아직 안 옮긴 학생 ${x.studs.length}명</div></div><button class="btn sm primary" data-act="cohort-move" data-i="${i}">연결</button></div>`).join('')}</div></div></section>` : ''}
         <section class="card"><div class="card-head"><h3>다가오는 면담</h3><span class="faint">2주</span></div>
@@ -316,14 +326,14 @@
       const ln = lastNote(s.id);
       const nm = nextMeeting(s.id);
       return `<tr class="click" data-act="go" data-href="#/students/${s.id}">
-        <td style="min-width:150px"><div class="row" style="flex-wrap:nowrap"><span class="av">${initial(s.name)}</span><div><b>${esc(s.name)}</b><div class="faint">${esc(s.goal || '목표 미입력')}</div></div></div></td>
+        <td style="min-width:150px"><div class="row" style="flex-wrap:nowrap"><span class="av">${initial(s.name)}</span><div><b>${esc(s.name)}</b>${delPill(s)}<div class="faint">${esc(s.goal || '목표 미입력')}</div></div></div></td>
         <td>${pill(statusOf(s.status))}</td>
         <td class="hide-m">${esc(s.category || '-')}<div class="faint">${esc(s.track || '')}</div></td>
         <td style="white-space:nowrap">${esc(staffName(s.mentorId))}</td>
         <td class="hide-m">${(s.classIds || []).map(id => classes.find(c => c.id === id)).filter(c => c && !classEnded(c)).map(c => `<span class="pill outline">${esc(c.name)}</span>`).join(' ') || '<span class="faint">없음</span>'}</td>
         <td class="hide-m">${ln ? fmt(ln.date) : '<span class="faint">없음</span>'}</td>
         <td>${nm ? fmt(nm.date) : '<span class="faint">-</span>'}</td>
-        <td style="text-align:right">${canDeleteStudent(s) ? `<button class="btn ghost sm danger" data-act="stu-delete" data-id="${s.id}" title="${esc(s.name)} 삭제">삭제</button>` : ''}</td></tr>`;
+        <td style="text-align:right;white-space:nowrap">${deleteButton(s)}</td></tr>`;
     }).join('');
     const board = `<div class="board">${STATUS.map(st => {
       const items = list.filter(s => s.status === st.key);
@@ -644,7 +654,10 @@
         <div class="row" style="margin-top:10px"><button class="btn primary" data-act="copy" data-v="${esc(url)}">링크 복사</button><a class="btn" href="${esc(url)}" target="_blank" rel="noopener">열어보기</a><button class="btn danger" data-act="token-new" data-id="${s.id}">새 링크 만들기</button></div>
         <p class="faint">링크가 다른 사람에게 퍼졌거나 수료한 학생이면 새 링크를 만드세요. 이전 링크는 바로 막혀요.</p>
       </div></section>
-      ${canDeleteStudent(s) ? `<section class="card"><div class="card-head"><h3>학생 삭제</h3></div><div class="card-body"><p class="muted" style="margin-top:0">학생과 상담 기록 · 출결 · 할 일이 모두 지워지고 되돌릴 수 없어요. 먼저 백업을 받아두세요.</p><button class="btn danger" data-act="stu-delete" data-id="${s.id}">이 학생 삭제</button></div></section>` : ''}
+      ${canDeleteStudent(s) || canRequestDelete(s) ? `<section class="card"><div class="card-head"><h3>학생 삭제</h3></div><div class="card-body">
+        ${s.deleteRequest ? `<p class="pill red" style="height:auto;padding:6px 10px;margin:0 0 10px">삭제 요청 · ${esc(s.deleteRequest.byName || '')} · ${fmtFull(s.deleteRequest.at)}<br>사유: ${esc(s.deleteRequest.reason || '-')}</p>` : ''}
+        <p class="muted" style="margin-top:0">${canDeleteStudent(s) ? '학생과 상담 기록 · 면담 · 할 일이 모두 지워지고 되돌릴 수 없어요. 먼저 백업을 받아두세요.' : '학생 삭제는 팀장·부장·원장 승인이 필요해요. 요청하면 승인권자 대시보드에 올라가요.'}</p>
+        <div class="row">${deleteButton(s)}</div></div></section>` : ''}
     </div>`;
   }
 
@@ -1303,13 +1316,42 @@
     },
     'stu-delete': async el => {
       const s = Store.get('students', el.dataset.id);
-      if (!(await confirmBox(`${s.name} 학생과 모든 기록을 삭제할까요? 되돌릴 수 없어요.`, '삭제'))) return;
+      if (!canDeleteStudent(s)) return toast('학생 삭제는 팀장·부장·원장만 할 수 있어요. 삭제 요청을 해주세요.');
+      if (!(await confirmBox(`${s.name} 학생과 모든 기록을 삭제할까요? 되돌릴 수 없어요.${s.deleteRequest ? `\n(삭제 요청: ${s.deleteRequest.byName || ''} · ${s.deleteRequest.reason || ''})` : ''}`, '삭제'))) return;
       for (const col of ['notes', 'meetings', 'tasks']) for (const r of Store.all(col).filter(r => r.studentId === s.id)) await Store.del(col, r.id);
       for (const e of Store.all('exams').filter(e => (e.studentIds || []).includes(s.id))) { e.studentIds = e.studentIds.filter(x => x !== s.id); await Store.put('exams', e); }
       await Store.del('students', s.id);
-      await Store.log('delete', s.id, `학생 삭제: ${s.name}`);
+      await Store.log('delete', s.id, `학생 삭제: ${s.name}${s.deleteRequest ? ` (요청 ${s.deleteRequest.byName || ''}, 사유: ${s.deleteRequest.reason || '-'}) 승인` : ''}`);
       toast(`${s.name} 학생을 삭제했어요`);
       if ((location.hash || '').startsWith('#/students/')) location.hash = '#/students'; else render();
+    },
+    'del-request': el => {
+      const s = Store.get('students', el.dataset.id);
+      openModal(`${s.name} 학생 삭제 요청`, `<p class="muted" style="margin-top:0">팀장·부장·원장이 승인하면 삭제돼요. 승인 전까지는 그대로 남아 있어요.</p>${field('사유', `<textarea class="in" name="reason" placeholder="예: 수강 취소, 중복 등록, 연락 두절"></textarea>`)}`, {
+        okText: '요청하기',
+        onOk: async root => {
+          const reason = vals(root).reason;
+          if (!reason) { toast('사유를 적어주세요'); return false; }
+          s.deleteRequest = { by: me().id, byName: me().name, at: new Date().toISOString(), reason };
+          await Store.put('students', s);
+          await Store.log('delete-request', s.id, `학생 삭제 요청: ${s.name} (사유: ${reason})`);
+          toast('삭제 요청을 보냈어요'); render();
+        }
+      });
+    },
+    'del-cancel': async el => {
+      const s = Store.get('students', el.dataset.id);
+      delete s.deleteRequest; await Store.put('students', s);
+      await Store.log('delete-request', s.id, `학생 삭제 요청 취소: ${s.name}`);
+      toast('삭제 요청을 취소했어요'); render();
+    },
+    'del-reject': async el => {
+      const s = Store.get('students', el.dataset.id);
+      if (!(await confirmBox(`${s.name} 학생의 삭제 요청을 반려할까요? 학생은 그대로 남아요.`, '반려'))) return;
+      const req = s.deleteRequest || {};
+      delete s.deleteRequest; await Store.put('students', s);
+      await Store.log('delete-request', s.id, `학생 삭제 요청 반려: ${s.name} (요청 ${req.byName || ''})`);
+      toast('반려했어요'); render();
     },
     'class-arch': el => { ui.classArchived = el.dataset.v === '1'; render(); },
     'class-view': el => { ui.classView = el.dataset.v; try { localStorage.setItem('haksa-class-view', ui.classView); } catch (e) {} render(); },

@@ -101,6 +101,8 @@ create policy items_update on public.items for update to authenticated
 create policy items_delete on public.items for delete to authenticated
   using (
     collection <> 'logs'
+    -- 학생 삭제는 팀장·부장·원장(총괄)만 (멘토는 앱에서 삭제 요청 → 승인)
+    and (collection <> 'students' or public.haksa_me()->>'role' in ('admin', 'head', 'lead'))
     and public.haksa_read_ok(collection, student_id, mentor_id, team_id)
     and public.haksa_write_ok(collection, student_id, mentor_id, team_id)
   );

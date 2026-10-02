@@ -124,6 +124,18 @@ ok('insert: 멘토가 수정 이력 남김', r.ok, r.e);
 r = await as('m1@x.com', () => tryq(up('staff', 'u11', { email: 'z@x.com', role: 'admin' })));
 ok('upsert: 멘토가 직원 못 만듦', !r.ok, r.e);
 
+// 학생 삭제 승인제
+r = await as('m1@x.com', () => tryq(`delete from items where collection='students' and id='u2'`));
+ok('멘토: 자기 담당 학생도 직접 삭제 못 함', !r.ok || r.n === 0, r.e || 'rows ' + r.n);
+r = await as('m1@x.com', () => tryq(`update items set data = data || '{"deleteRequest":{"reason":"x"}}' where collection='students' and id='u2'`));
+ok('멘토: 삭제 요청(학생 정보 수정)은 가능', r.ok && r.n === 1, r.e || 'rows ' + r.n);
+r = await as('lead1@x.com', () => tryq(`delete from items where collection='students' and id='u2'`));
+ok('팀장: 자기 팀 학생 삭제(승인)', r.ok && r.n === 1, r.e || 'rows ' + r.n);
+r = await as('lead1@x.com', () => tryq(`delete from items where collection='students' and id='s2'`));
+ok('팀장: 다른 팀 학생은 삭제 못 함', !r.ok || r.n === 0, r.e || 'rows ' + r.n);
+r = await as('head1@x.com', () => tryq(`delete from items where collection='students' and id='u5'`));
+ok('부장: 사업부 학생 삭제(승인)', r.ok && r.n === 1, r.e || 'rows ' + r.n);
+
 // 학생 링크
 let v = await as(null, () => db.query(`select student_view('tok-s1-aaaaaaaa') v`));
 v = v.rows[0].v;
