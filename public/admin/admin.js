@@ -39,6 +39,8 @@
   const classPeriod = c => (c.startDate ? `${fmt(c.startDate)}~${fmt(c.endDate)}` : '기간 미정');
   const classTime = c => `${(c.days || []).map(d => DAYS[d]).join('·') || '요일 미정'} ${esc(c.start || '')}~${esc(c.end || '')}`;
   // 최근에 등록한 학생이 위로 (등록 시각이 같으면 그룹웨어 학생 번호가 큰 쪽이 최근)
+  // 학생 삭제: 팀장 이상, 또는 자기 담당 학생
+  const canDeleteStudent = s => isLead() || s.mentorId === me().id;
   const newestFirst = list => sortBy(list, s => (s.createdAt || '') + String(s.gwNo || '').padStart(10, '0')).reverse();
   const sortBy = (arr, f) => arr.slice().sort((a, b) => (f(a) < f(b) ? -1 : f(a) > f(b) ? 1 : 0));
 
@@ -320,7 +322,8 @@
         <td style="white-space:nowrap">${esc(staffName(s.mentorId))}</td>
         <td class="hide-m">${(s.classIds || []).map(id => classes.find(c => c.id === id)).filter(c => c && !classEnded(c)).map(c => `<span class="pill outline">${esc(c.name)}</span>`).join(' ') || '<span class="faint">없음</span>'}</td>
         <td class="hide-m">${ln ? fmt(ln.date) : '<span class="faint">없음</span>'}</td>
-        <td>${nm ? fmt(nm.date) : '<span class="faint">-</span>'}</td></tr>`;
+        <td>${nm ? fmt(nm.date) : '<span class="faint">-</span>'}</td>
+        <td style="text-align:right">${canDeleteStudent(s) ? `<button class="btn ghost sm danger" data-act="stu-delete" data-id="${s.id}" title="${esc(s.name)} 삭제">삭제</button>` : ''}</td></tr>`;
     }).join('');
     const board = `<div class="board">${STATUS.map(st => {
       const items = list.filter(s => s.status === st.key);
@@ -337,7 +340,7 @@
       <select class="in" style="max-width:180px" data-change="stu-cat">${opt('', '카테고리 전체', f.cat)}${CATEGORIES.map(c => opt(c, c, f.cat)).join('')}</select>
       ${me().role !== 'mentor' ? `<select class="in" style="max-width:180px" data-change="stu-mentor">${opt('', '담당 전체', f.mentor)}${staff().map(s => opt(s.id, s.name, f.mentor)).join('')}</select>` : ''}
     </div>
-    ${f.view === 'board' ? board : `<div class="card tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>이름</th><th>상태</th><th class="hide-m">카테고리</th><th>담당</th><th class="hide-m">수업</th><th class="hide-m">최근 상담</th><th>다음 면담</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">조건에 맞는 학생이 없어요</div>`}</div>`}`;
+    ${f.view === 'board' ? board : `<div class="card tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>이름</th><th>상태</th><th class="hide-m">카테고리</th><th>담당</th><th class="hide-m">수업</th><th class="hide-m">최근 상담</th><th>다음 면담</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">조건에 맞는 학생이 없어요</div>`}</div>`}`;
   }
 
   function studentForm(s) {
@@ -641,7 +644,7 @@
         <div class="row" style="margin-top:10px"><button class="btn primary" data-act="copy" data-v="${esc(url)}">링크 복사</button><a class="btn" href="${esc(url)}" target="_blank" rel="noopener">열어보기</a><button class="btn danger" data-act="token-new" data-id="${s.id}">새 링크 만들기</button></div>
         <p class="faint">링크가 다른 사람에게 퍼졌거나 수료한 학생이면 새 링크를 만드세요. 이전 링크는 바로 막혀요.</p>
       </div></section>
-      ${isLead() ? `<section class="card"><div class="card-head"><h3>학생 삭제</h3></div><div class="card-body"><p class="muted" style="margin-top:0">학생과 상담 기록 · 출결 · 할 일이 모두 지워지고 되돌릴 수 없어요. 먼저 백업을 받아두세요.</p><button class="btn danger" data-act="stu-delete" data-id="${s.id}">이 학생 삭제</button></div></section>` : ''}
+      ${canDeleteStudent(s) ? `<section class="card"><div class="card-head"><h3>학생 삭제</h3></div><div class="card-body"><p class="muted" style="margin-top:0">학생과 상담 기록 · 출결 · 할 일이 모두 지워지고 되돌릴 수 없어요. 먼저 백업을 받아두세요.</p><button class="btn danger" data-act="stu-delete" data-id="${s.id}">이 학생 삭제</button></div></section>` : ''}
     </div>`;
   }
 
@@ -1305,7 +1308,8 @@
       for (const e of Store.all('exams').filter(e => (e.studentIds || []).includes(s.id))) { e.studentIds = e.studentIds.filter(x => x !== s.id); await Store.put('exams', e); }
       await Store.del('students', s.id);
       await Store.log('delete', s.id, `학생 삭제: ${s.name}`);
-      toast('삭제했어요'); location.hash = '#/students';
+      toast(`${s.name} 학생을 삭제했어요`);
+      if ((location.hash || '').startsWith('#/students/')) location.hash = '#/students'; else render();
     },
     'class-arch': el => { ui.classArchived = el.dataset.v === '1'; render(); },
     'class-view': el => { ui.classView = el.dataset.v; try { localStorage.setItem('haksa-class-view', ui.classView); } catch (e) {} render(); },
