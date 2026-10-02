@@ -633,9 +633,8 @@
       <span class="faint">${fmt(from)} ~ ${fmt(to)} 사이에 진행되는 수업</span></div>`;
     if (!list.length) return nav + `<div class="card empty">이 달에 진행되는 ${ui.gridKind === 'weekend' ? '주말 ' : ui.gridKind === 'weekday' ? '평일 ' : ''}수업이 없어요</div>`;
 
-    // 강의실별로, 시간·기간·요일이 겹치는 반은 옆 칸(레인)으로
+    // 강의실별로, 그 달 안에서 시간·요일이 겹치는 반은 옆 칸(레인)으로 (앞뒤로 이어지는 기수도 나눠 보여 줌)
     const overlap = (a, b) => toMin(a.start) < toMin(b.end) && toMin(b.start) < toMin(a.end)
-      && (a.startDate || '') <= (b.endDate || '9999') && (b.startDate || '') <= (a.endDate || '9999')
       && (a.days || []).some(d => (b.days || []).includes(d));
     const rooms = Array.from(new Set(list.map(c => c.room || '강의실 미정'))).sort((a, b) => a.localeCompare(b, 'ko'));
     const cols = [];
