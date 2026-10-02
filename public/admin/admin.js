@@ -38,6 +38,8 @@
   const classEnded = c => !!c.archived || (!!c.endDate && c.endDate < today());
   const classPeriod = c => (c.startDate ? `${fmt(c.startDate)}~${fmt(c.endDate)}` : '기간 미정');
   const classTime = c => `${(c.days || []).map(d => DAYS[d]).join('·') || '요일 미정'} ${esc(c.start || '')}~${esc(c.end || '')}`;
+  // 최근에 등록한 학생이 위로 (등록 시각이 같으면 그룹웨어 학생 번호가 큰 쪽이 최근)
+  const newestFirst = list => sortBy(list, s => (s.createdAt || '') + String(s.gwNo || '').padStart(10, '0')).reverse();
   const sortBy = (arr, f) => arr.slice().sort((a, b) => (f(a) < f(b) ? -1 : f(a) > f(b) ? 1 : 0));
 
   function toast(msg) {
@@ -303,7 +305,7 @@
   function pageStudents() {
     const all = students();
     const f = ui.stu;
-    const list = sortBy(filteredStudents(), s => s.name);
+    const list = newestFirst(filteredStudents());
     const count = k => k === 'ongoing' ? ongoing(all).length : k === 'all' ? all.length : all.filter(s => s.status === k).length;
     const chips = [['ongoing', '진행 중'], ['all', '전체']].concat(STATUS.map(s => [s.key, s.label]))
       .map(([k, l]) => `<button class="chip ${f.status === k ? 'on' : ''}" data-act="stu-status" data-v="${k}">${l}<b>${count(k)}</b></button>`).join('');
@@ -1210,7 +1212,7 @@
     'stu-csv': () => {
       const classes = Store.all('classes');
       const rows = [['이름', '연락처', '상태', '카테고리', '전공', '담당', '팀', '목표', '수업', '최근 상담', '다음 면담', '취업·진학처', '등록일']];
-      sortBy(filteredStudents(), s => s.name).forEach(s => {
+      newestFirst(filteredStudents()).forEach(s => {
         const ln = lastNote(s.id), nm = nextMeeting(s.id);
         rows.push([s.name, s.phone, statusOf(s.status).label, s.category, s.track, staffName(s.mentorId), teamName(s.teamId), s.goal,
           (s.classIds || []).map(id => (classes.find(c => c.id === id) || {}).name).filter(Boolean).join(' / '), ln ? ln.date : '', nm ? nm.date : '', (s.employment || {}).company || '', (s.createdAt || '').slice(0, 10)]);
