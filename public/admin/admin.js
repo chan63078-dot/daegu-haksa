@@ -28,6 +28,7 @@
   const pill = st => `<span class="pill ${st.tone}">${esc(st.label)}</span>`;
   const studentLink = s => `${ROOT}?t=${encodeURIComponent(s.token)}${Store.forceDemo ? '&demo' : ''}`;
   const classEnded = c => !!c.archived || (!!c.endDate && c.endDate < today());
+  const classPeriod = c => (c.startDate ? `${fmt(c.startDate)}~${fmt(c.endDate)}` : '기간 미정');
   const classTime = c => `${(c.days || []).map(d => DAYS[d]).join('·') || '요일 미정'} ${esc(c.start || '')}~${esc(c.end || '')}`;
   const sortBy = (arr, f) => arr.slice().sort((a, b) => (f(a) < f(b) ? -1 : f(a) > f(b) ? 1 : 0));
 
@@ -296,7 +297,7 @@
       ${field('상태', `<select class="in" name="status">${STATUS.map(x => opt(x.key, x.label, s.status || 'active')).join('')}</select>`)}
       ${field('한 줄 목표', input('goal', s.goal, 'placeholder="예: 정보처리기사 → 공기업 전산직"'), 'full')}
       ${field('수강 수업', classes.length
-        ? `<div style="max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 12px">${sortBy(classes, c => c.name).map(c => `<label class="li check" style="padding:8px 0"><input type="checkbox" name="classIds" data-multi value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}><div class="main"><div class="t" style="font-weight:600">${esc(c.name)}</div><div class="s">${classTime(c)} · ${esc(c.room || '')}</div></div></label>`).join('')}</div>`
+        ? `<div style="max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 12px">${sortBy(classes, c => (c.startDate || '') + c.name).map(c => `<label class="li check" style="padding:8px 0"><input type="checkbox" name="classIds" data-multi value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}><div class="main"><div class="t" style="font-weight:600">${esc(c.name)}</div><div class="s">${classPeriod(c)} · ${classTime(c)} · ${esc(c.room || '')}</div></div></label>`).join('')}</div>`
         : `<div class="faint">아직 등록된 수업이 없어요. ${isLead() ? '<a href="#/classes" data-close-modal>수업·출결</a>에서 수업을 추가하거나 시간표 파일로 한꺼번에 등록한 뒤 고를 수 있어요.' : '팀장님께 수업 등록을 요청하세요.'}</div>`, 'full')}
     </div>`;
   }
@@ -490,7 +491,7 @@
     return `<div class="grid g2" style="align-items:start">
       <section class="card"><div class="card-head"><h3>수강 수업</h3>${isLead() ? `<button class="btn sm" data-act="class-new" data-for="${s.id}">+ 새 수업 만들기</button>` : ''}</div><div class="card-body">
         ${classes.some(c => !classEnded(c)) ? '' : `<div class="faint" style="margin-bottom:8px">진행 중인 수업이 없어요. ${isLead() ? '오른쪽 위 버튼이나 수업·출결의 "시간표 파일로 등록"으로 먼저 수업을 만들어 주세요.' : '팀장님께 수업 등록을 요청하세요.'}</div>`}
-        <div class="list">${sortBy(classes.filter(c => !classEnded(c) || (s.classIds || []).includes(c.id)), c => ((s.classIds || []).includes(c.id) ? '0' : '1') + c.name).map(c => `<label class="li check"><input type="checkbox" data-change="stu-class" data-id="${s.id}" value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}><div class="main"><div class="t">${esc(c.name)}${classEnded(c) ? ' <span class="pill">종료</span>' : ''}</div><div class="s">${classTime(c)}${c.room ? ' · ' + esc(c.room) : ''}${c.instructor ? ' · ' + esc(c.instructor) : ''}</div></div></label>`).join('')}</div>
+        <div class="list">${sortBy(classes.filter(c => !classEnded(c) || (s.classIds || []).includes(c.id)), c => ((s.classIds || []).includes(c.id) ? '0' : '1') + (c.startDate || '') + c.name).map(c => `<label class="li check"><input type="checkbox" data-change="stu-class" data-id="${s.id}" value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}><div class="main"><div class="t">${esc(c.name)}${classEnded(c) ? ' <span class="pill">종료</span>' : ''}</div><div class="s">${classPeriod(c)} · ${classTime(c)}${c.room ? ' · ' + esc(c.room) : ''}${c.instructor ? ' · ' + esc(c.instructor) : ''}</div></div></label>`).join('')}</div>
       </div></section>
       <section class="card"><div class="card-head"><h3>출결 요약</h3></div><div class="card-body">
         ${mine.length ? mine.map(c => {
@@ -590,7 +591,7 @@
   function pageClasses() {
     const t = today();
     const all = Store.all('classes');
-    const list = sortBy(all.filter(c => classEnded(c) === ui.classArchived), c => (U.classOn(c, t) ? '0' : (c.startDate || '') <= t ? '1' : '2') + c.name);
+    const list = sortBy(all.filter(c => classEnded(c) === ui.classArchived), c => (U.classOn(c, t) ? '0' : (c.startDate || '') <= t ? '1' : '2') + (c.startDate || '') + c.name);
     const studs = students();
     return `<div class="page-head"><div><h1>수업 · 출결</h1><p>반별 학생과 출결을 보고, 출결표를 엑셀로 받을 수 있어요</p></div>
       <div class="row">${isLead() ? '<button class="btn" data-act="class-import">시간표 파일로 등록</button><button class="btn primary" data-act="class-new">+ 수업 추가</button>' : ''}</div></div>
