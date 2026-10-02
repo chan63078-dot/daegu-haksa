@@ -35,6 +35,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
+      - name: 캐시 무효화용 버전 표시
+        run: grep -rl '__BUILD__' public | xargs sed -i "s/__BUILD__/${GITHUB_SHA::8}/g"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public

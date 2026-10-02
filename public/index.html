@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#1f5c46">
   <title>나의 학습 페이지</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="lib/app.css">
+  <link rel="stylesheet" href="lib/app.css?v=__BUILD__">
   <style>
     .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 60px; }
     .hero { background: var(--brand); color: var(--brand-ink); border-radius: 20px; padding: 22px 22px 20px; }
@@ -33,10 +33,10 @@
 <body>
   <div class="wrap" id="app"><div class="empty">불러오는 중…</div></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
-  <script src="lib/util.js"></script>
-  <script src="lib/seed.js"></script>
-  <script src="lib/store.js"></script>
+  <script src="config.js?v=__BUILD__"></script>
+  <script src="lib/util.js?v=__BUILD__"></script>
+  <script src="lib/seed.js?v=__BUILD__"></script>
+  <script src="lib/store.js?v=__BUILD__"></script>
   <script>
   (function () {
     const { esc, fmt, today, addDays, dday, DAYS, ATT } = U;

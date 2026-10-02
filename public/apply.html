@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#1f5c46">
   <title>상담 신청</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="lib/app.css">
+  <link rel="stylesheet" href="lib/app.css?v=__BUILD__">
 </head>
 <body>
   <div class="login-wrap"><div class="login card card-pad" style="padding:28px" id="app">
@@ -23,10 +23,10 @@
     </form>
   </div></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
-  <script src="lib/util.js"></script>
-  <script src="lib/seed.js"></script>
-  <script src="lib/store.js"></script>
+  <script src="config.js?v=__BUILD__"></script>
+  <script src="lib/util.js?v=__BUILD__"></script>
+  <script src="lib/seed.js?v=__BUILD__"></script>
+  <script src="lib/store.js?v=__BUILD__"></script>
   <script>
     document.getElementById('academy').textContent = Store.config.ACADEMY_NAME || '';
     const f = document.getElementById('f');
