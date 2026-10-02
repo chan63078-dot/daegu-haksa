@@ -25,8 +25,15 @@ Deno.serve(async req => {
   if (req.method !== 'POST') return fail(405, 'method', 'POST만 받아요');
 
   const url = Deno.env.get('SUPABASE_URL')!;
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!serviceKey) return fail(500, 'config', '서버 설정(SUPABASE_SERVICE_ROLE_KEY)이 없어요');
+  // 관리자 키: 예전 방식(SUPABASE_SERVICE_ROLE_KEY) 또는 새 방식(SUPABASE_SECRET_KEYS, JSON)
+  let serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  if (!serviceKey) {
+    try {
+      const keys = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}');
+      serviceKey = String(keys.default || Object.values(keys)[0] || '');
+    } catch { /* 아래에서 처리 */ }
+  }
+  if (!serviceKey) return fail(500, 'config', '서버 설정(관리자 키)을 찾지 못했어요');
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
   // 1) 요청한 사람 확인: 로그인 토큰 → 이메일 → 직원 명단에서 원장·총괄인지
