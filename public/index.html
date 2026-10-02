@@ -76,7 +76,7 @@
         <div>${esc(s.goal || '')}</div>
         ${s.intro ? `<p class="faint" style="margin:10px 0 0">${esc(s.intro)}</p>` : ''}
         <div class="row" style="margin-top:16px;gap:20px">
-          <div><div class="faint">출석률</div><b style="font-size:22px">${r == null ? '-' : r + '%'}</b></div>
+          <div><div class="faint">수강 중인 수업</div><b style="font-size:22px">${data.classes.filter(c => (!c.startDate || c.startDate <= t) && (!c.endDate || c.endDate >= t)).length}</b></div>
           <div><div class="faint">로드맵</div><b style="font-size:22px">${done}/${road.length}</b></div>
           <div><div class="faint">남은 할 일</div><b style="font-size:22px">${tasks.filter(k => !k.done).length}</b></div>
         </div>

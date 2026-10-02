@@ -3,9 +3,9 @@
 // - 실제 모드: Supabase 의 items 테이블 하나에 컬렉션별로 저장, 권한은 DB(RLS)가 판단
 (function () {
   const C = window.HAKSA_CONFIG || {};
-  const COLS = ['teams', 'staff', 'students', 'classes', 'attendance', 'notes', 'meetings', 'tasks', 'exams', 'leads', 'logs'];
+  const COLS = ['teams', 'staff', 'students', 'classes', 'attendance', 'notes', 'meetings', 'tasks', 'exams', 'leads', 'logs', 'settings'];
   const STUDENT_SCOPED = ['attendance', 'notes', 'meetings', 'tasks'];
-  const LS_KEY = 'daegu-haksa-v2';  // 데모 데이터 구조가 바뀌면 숫자를 올림
+  const LS_KEY = 'daegu-haksa-v3';  // 데모 데이터 구조가 바뀌면 숫자를 올림
   const LS_ME = 'daegu-haksa-me';
   // 주소에 ?demo 를 붙이면 실제 DB 대신 연습용 데모 모드 (교육·테스트용)
   const forceDemo = /[?&]demo\b/.test(location.search);

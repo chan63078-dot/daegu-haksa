@@ -99,21 +99,63 @@
   }
 
   // ---------- 계산 ----------
-  function attOf(sid, cid) { return Store.all('attendance').filter(a => a.studentId === sid && (!cid || a.classId === cid)); }
-  function rate(list) {
-    if (!list.length) return null;
-    return Math.round(list.filter(a => a.state !== 'absent').length / list.length * 100);
-  }
+  function nextMeeting(sid) { const t = today(); return sortBy(Store.all('meetings').filter(m => m.studentId === sid && !m.done && m.date >= t), m => m.date + (m.time || ''))[0] || null; }
   function lastNote(sid) { return sortBy(Store.all('notes').filter(n => n.studentId === sid), n => n.date).pop() || null; }
+
+  // 같은 과정의 다음 기수: 이름 끝 번호 +1 (번호가 없으면 같은 이름), 같은 강의실 우선
+  function seriesOf(c) {
+    const base = String(c.name || '').replace(/\s·\s.*$/, '').trim();
+    const m = base.match(/^(.*?)(\d+)(\/주말)?$/);
+    return m ? { key: m[1].trim() + (m[3] || ''), n: Number(m[2]) } : { key: base, n: null };
+  }
+  function nextCohort(c, classes) {
+    const sc = seriesOf(c);
+    const cands = (classes || Store.all('classes')).filter(x => x.id !== c.id && (x.startDate || '') > (c.startDate || '') && !classEnded(x))
+      .filter(x => { const sx = seriesOf(x); return sx.key === sc.key && (sc.n == null ? sx.n == null : sx.n === sc.n + 1); });
+    return sortBy(cands, x => (x.room === c.room ? '0' : '1') + (x.startDate || ''))[0] || null;
+  }
+  // 종강 10일 전 ~ 종강 7일 후 수업 중, 다음 기수로 아직 안 옮긴 진행 중 학생이 있는 것
+  function cohortSuggestions(list) {
+    const t = today();
+    const classes = Store.all('classes');
+    const out = [];
+    classes.filter(c => c.endDate && diffDays(c.endDate, t) <= 10 && diffDays(t, c.endDate) <= 7).forEach(c => {
+      const nx = nextCohort(c, classes);
+      if (!nx) return;
+      const studs = ongoing(list).filter(s => (s.classIds || []).includes(c.id) && !(s.classIds || []).includes(nx.id));
+      if (studs.length) out.push({ from: c, to: nx, studs });
+    });
+    return sortBy(out, x => x.from.endDate);
+  }
+  function moveCohort(from, to, list) {
+    openModal('다음 기수로 연결', `<div class="card card-pad" style="margin-bottom:12px;background:var(--surface-2)">
+        <div class="faint">지금 수업</div><b>${esc(from.name)}</b><div class="faint">${classPeriod(from)} · ${esc(from.room || '')}</div>
+        <div style="margin:8px 0;font-weight:800;color:var(--brand)">↓</div>
+        <div class="faint">다음 기수</div><b>${esc(to.name)}</b><div class="faint">${classPeriod(to)} · ${classTime(to)} · ${esc(to.room || '')}</div></div>
+      <label class="check" style="margin-bottom:6px"><input type="checkbox" id="mv-all" checked>모두 선택</label>
+      <div style="max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 12px">${list.map(s => `<label class="li check" style="padding:8px 0"><input type="checkbox" name="sids" data-multi value="${s.id}" checked><div class="main"><div class="t" style="font-weight:600">${esc(s.name)}</div><div class="s">${esc(staffName(s.mentorId))}</div></div></label>`).join('')}</div>
+      <p class="faint">지금 수업 연결은 그대로 두고 다음 기수만 추가해요. 다음 기수로 안 가는 학생은 체크를 빼세요.</p>`, {
+      okText: '연결하기',
+      onOpen: bg => { bg.querySelector('#mv-all').onchange = e => bg.querySelectorAll('[name=sids]').forEach(x => { x.checked = e.target.checked; }); },
+      onOk: async root => {
+        const pick = new Set(vals(root).sids || []);
+        if (!pick.size) { toast('학생을 골라주세요'); return false; }
+        for (const s of list.filter(x => pick.has(x.id))) { s.classIds = Array.from(new Set((s.classIds || []).concat(to.id))); await Store.put('students', s); }
+        await Store.log('cohort', to.id, `다음 기수 연결: ${from.name} → ${to.name} (${pick.size}명)`);
+        toast(`${pick.size}명을 ${to.name}에 연결했어요`);
+        render();
+      }
+    });
+  }
+
+  const lastBackup = () => Store.get('settings', 'backup');
+  function backupAge() { const b = lastBackup(); return b && b.at ? diffDays(today(), b.at.slice(0, 10)) : null; }
 
   function alertsFor(list) {
     const t = today();
     const out = [];
     const exams = Store.all('exams');
     ongoing(list).forEach(s => {
-      const att = sortBy(attOf(s.id), a => a.date);
-      const last2 = att.slice(-2);
-      if (last2.length === 2 && last2.every(a => a.state === 'absent')) out.push({ tone: 'red', s, title: '연속 결석', sub: `${fmt(last2[0].date)}, ${fmt(last2[1].date)} 결석` });
       const ln = lastNote(s.id);
       if (!ln) out.push({ tone: 'amber', s, title: '상담 기록 없음', sub: '첫 면담을 잡아주세요' });
       else if (diffDays(t, ln.date) > 21) out.push({ tone: 'amber', s, title: '면담 공백', sub: `마지막 기록 ${diffDays(t, ln.date)}일 전` });
@@ -122,6 +164,8 @@
       if (late) out.push({ tone: 'amber', s, title: '후속 상담 지연', sub: `예정일 ${fmt(late.nextDate)}` });
       const overdue = Store.all('tasks').filter(k => k.studentId === s.id && !k.done && k.due && k.due < t);
       if (overdue.length) out.push({ tone: 'blue', s, title: '할 일 지연', sub: `${overdue[0].title}${overdue.length > 1 ? ` 외 ${overdue.length - 1}건` : ''}` });
+      exams.filter(e => (e.studentIds || []).includes(s.id) && e.regEnd && e.regEnd >= t && diffDays(e.regEnd, t) <= 3)
+        .forEach(e => out.push({ tone: 'red', s, title: `접수 마감 ${dday(e.regEnd)}`, sub: `${e.name} · ${fmt(e.regEnd)}까지` }));
       exams.filter(e => (e.studentIds || []).includes(s.id) && examLast(e) >= t && diffDays(e.examDate, t) <= 14)
         .forEach(e => out.push({ tone: 'blue', s, title: e.examDate <= t ? '시험 기간' : `시험 임박 ${dday(e.examDate)}`, sub: `${e.name} · ${examWhen(e)}` }));
     });
@@ -133,9 +177,8 @@
   const NAV = [
     ['home', '#/', '오늘'],
     ['students', '#/students', '학생'],
-    ['classes', '#/classes', '수업·출결'],
+    ['classes', '#/classes', '수업'],
     ['exams', '#/exams', '시험 일정'],
-    ['leads', '#/leads', '상담 문의'],
     ['report', '#/report', '리포트'],
     ['settings', '#/settings', '설정']
   ];
@@ -197,44 +240,44 @@
     const classesToday = Store.all('classes').filter(c => U.classOn(c, t));
     const meetings = sortBy(Store.all('meetings').filter(x => ids.has(x.studentId) && !x.done && x.date >= t && x.date <= addDays(t, 13)), x => x.date + (x.time || ''));
     const weekMeet = meetings.filter(x => x.date <= addDays(t, 6)).length;
-    const att14 = Store.all('attendance').filter(a => ids.has(a.studentId) && a.date >= addDays(t, -14));
-    const r = rate(att14);
     const alerts = alertsFor(list);
-    const leadsDue = Store.all('leads').filter(l => ['new', 'contacted'].includes(l.status) && l.nextDate && l.nextDate <= t);
+    const monthNew = list.filter(s => (s.createdAt || '').slice(0, 7) === t.slice(0, 7)).length;
+    const cohorts = cohortSuggestions(list);
+    ui._cohorts = cohorts;
+    const bAge = isAdmin() ? backupAge() : 0;
+    const examSoon = sortBy(Store.all('exams').filter(e => examLast(e) >= t && (diffDays(e.examDate, t) <= 21 || (e.regEnd && e.regEnd >= t && diffDays(e.regEnd, t) <= 7))), e => e.examDate);
     const h = new Date().getHours();
     const hello = h < 11 ? '좋은 아침이에요' : h < 18 ? '안녕하세요' : '오늘도 수고하셨어요';
 
-    const classBlocks = classesToday.map(c => {
-      const roster = on.filter(s => (s.classIds || []).includes(c.id));
-      if (!roster.length) return '';
-      const marks = roster.map(s => {
-        const a = Store.all('attendance').find(x => x.studentId === s.id && x.classId === c.id && x.date === t);
-        const cur = a ? a.state : '';
-        return `<div class="li"><span class="av">${initial(s.name)}</span><div class="main"><a class="t" href="#/students/${s.id}" style="text-decoration:none">${esc(s.name)}</a><div class="s">${esc(staffName(s.mentorId))}</div></div>
-          <div class="seg">${['present', 'late', 'absent'].map(k => `<button class="${k} ${cur === k ? 'on' : ''}" data-act="att" data-sid="${s.id}" data-cid="${c.id}" data-date="${t}" data-v="${k}">${ATT[k]}</button>`).join('')}</div></div>`;
-      }).join('');
-      return `<div style="margin-top:10px"><div class="row" style="justify-content:space-between"><b>${esc(c.name)}</b><span class="faint">${esc(c.start)}~${esc(c.end)} · ${esc(c.room || '')}</span></div><div class="list">${marks}</div></div>`;
+    const todayRows = classesToday.map(c => {
+      const n = on.filter(s => (s.classIds || []).includes(c.id)).length;
+      return n ? `<a class="li" href="#/classes/${c.id}"><span class="pill outline">${esc(c.start)}</span><div class="main"><div class="t">${esc(c.name)}</div><div class="s">${esc(c.room || '')}${c.instructor ? ' · ' + esc(c.instructor) : ''}</div></div><span class="faint">${n}명</span></a>` : '';
     }).join('');
 
     return `<div class="page-head"><div><h1>${hello}, ${esc(m.name)}님</h1><p>${fmtFull(t)} ${DAYS[U.dow(t)]}요일 · ${ui.homeMine || m.role === 'mentor' ? '내 담당 학생' : m.role === 'admin' ? '지점 전체' : m.role === 'head' ? esc(Store.divisionOf(m.teamId) || '사업부') + ' 전체' : esc(teamName(m.teamId)) + ' 전체'} 기준</p></div>
       <div class="row">${m.role !== 'mentor' ? `<button class="chip ${ui.homeMine ? 'on' : ''}" data-act="home-mine">내 담당만</button>` : ''}<button class="btn primary" data-act="student-new">+ 학생 추가</button></div></div>
 
+    ${isAdmin() && (bAge == null || bAge >= 7) ? `<div class="card card-pad row" style="margin-bottom:16px;border-color:var(--accent);background:var(--accent-soft);justify-content:space-between">
+      <div><b>${bAge == null ? '아직 백업을 받은 적이 없어요' : `마지막 백업이 ${bAge}일 전이에요`}</b><div class="faint">무료 플랜은 자동 백업이 없어요. 주 1회 받아 공용 드라이브에 보관하세요.</div></div>
+      <button class="btn accent" data-act="backup">지금 백업 받기</button></div>` : ''}
     <div class="grid g4">
       <div class="card stat hl"><div class="k">진행 중 학생</div><div class="v">${on.length}<small>명</small></div></div>
-      <div class="card stat"><div class="k">오늘 수업</div><div class="v">${classesToday.length}<small>개</small></div></div>
+      <div class="card stat"><div class="k">챙겨야 할 학생</div><div class="v">${new Set(alerts.map(a => a.s.id)).size}<small>명</small></div></div>
       <div class="card stat"><div class="k">이번 주 면담</div><div class="v">${weekMeet}<small>건</small></div></div>
-      <div class="card stat"><div class="k">최근 2주 출석률</div><div class="v">${r == null ? '-' : r}<small>${r == null ? '' : '%'}</small></div></div>
+      <div class="card stat"><div class="k">이번 달 신규</div><div class="v">${monthNew}<small>명</small></div></div>
     </div>
 
     <div class="grid g3" style="margin-top:16px;align-items:start">
-      <section class="card span2"><div class="card-head"><h3>오늘 수업 · 출석 체크</h3><span class="faint">누르면 바로 저장, 한 번 더 누르면 취소</span></div>
-        <div class="card-body">${classBlocks || '<div class="empty">오늘은 수업이 없어요</div>'}</div></section>
+      <section class="card span2"><div class="card-head"><h3>챙겨야 할 학생</h3><span class="faint">면담 공백 · 후속 상담 · 할 일 지연 · 시험 접수·임박</span></div>
+        <div class="card-body">${alerts.length ? alerts.slice(0, 20).map(a => `<a class="alert-row" href="#/students/${a.s.id}${a.title.includes('시험') || a.title.includes('접수') ? '/certs' : a.title.includes('할 일') ? '/certs' : '/notes'}"><span class="alert-dot ${a.tone}"></span><div class="grow"><b>${esc(a.s.name)}</b> <span class="muted">· ${esc(a.title)}</span><div class="faint">${esc(a.sub)} · 담당 ${esc(staffName(a.s.mentorId))}</div></div></a>`).join('') + (alerts.length > 20 ? `<div class="faint" style="padding-top:8px">외 ${alerts.length - 20}건</div>` : '') : '<div class="empty">지금 따로 챙길 학생이 없어요</div>'}</div></section>
       <div class="grid">
-        <section class="card"><div class="card-head"><h3>챙겨야 할 학생</h3><span class="pill ${alerts.length ? 'red' : 'green'}">${alerts.length}</span></div>
-          <div class="card-body">${alerts.length ? alerts.slice(0, 8).map(a => `<a class="alert-row" href="#/students/${a.s.id}"><span class="alert-dot ${a.tone}"></span><div class="grow"><b>${esc(a.s.name)}</b> <span class="muted">· ${esc(a.title)}</span><div class="faint">${esc(a.sub)}</div></div></a>`).join('') + (alerts.length > 8 ? `<div class="faint" style="padding-top:8px">외 ${alerts.length - 8}건</div>` : '') : '<div class="empty">지금 따로 챙길 학생이 없어요</div>'}</div></section>
+        ${cohorts.length ? `<section class="card" style="border-color:var(--brand)"><div class="card-head"><h3>다음 기수 연결</h3><span class="pill green">${cohorts.length}</span></div>
+          <div class="card-body"><div class="list">${cohorts.map((x, i) => `<div class="li" style="align-items:flex-start"><div class="main"><div class="t">${esc(x.from.name)}</div><div class="s">${fmt(x.from.endDate)} 종강 → ${esc(x.to.name)} ${fmt(x.to.startDate)} 개강</div><div class="s">아직 안 옮긴 학생 ${x.studs.length}명</div></div><button class="btn sm primary" data-act="cohort-move" data-i="${i}">연결</button></div>`).join('')}</div></div></section>` : ''}
         <section class="card"><div class="card-head"><h3>다가오는 면담</h3><span class="faint">2주</span></div>
           <div class="card-body">${meetings.length ? `<div class="list">${meetings.map(x => { const s = Store.get('students', x.studentId); return `<a class="li" href="#/students/${x.studentId}/notes"><span class="pill outline">${fmt(x.date)}</span><div class="main"><div class="t">${esc(s ? s.name : '')}</div><div class="s">${esc(x.time || '')} ${esc(x.topic || '')}</div></div></a>`; }).join('')}</div>` : '<div class="empty">예정된 면담이 없어요</div>'}</div></section>
-        ${leadsDue.length ? `<section class="card"><div class="card-head"><h3>오늘 연락할 상담 문의</h3><a class="btn sm" href="#/leads">전체</a></div><div class="card-body"><div class="list">${leadsDue.map(l => `<div class="li"><div class="main"><div class="t">${esc(l.name)}</div><div class="s">${esc(l.interest || '')} · ${esc(l.phone || '')}</div></div>${pill(leadStatusOf(l.status))}</div>`).join('')}</div></div></section>` : ''}
+        <section class="card"><div class="card-head"><h3>다가오는 시험</h3><a class="btn sm" href="#/exams">전체</a></div>
+          <div class="card-body">${examSoon.length ? `<div class="list">${examSoon.map(e => { const n = (e.studentIds || []).filter(id => ids.has(id)).length; const regOpen = e.regStart <= t && t <= e.regEnd; return `<a class="li" href="#/exams"><span class="pill ${regOpen ? 'amber' : 'blue'}">${regOpen ? '접수 ' + dday(e.regEnd) : e.examDate <= t ? '시험 중' : dday(e.examDate)}</span><div class="main"><div class="t">${esc(e.name)}</div><div class="s">시험 ${examWhen(e)}${n ? ` · 응시 ${n}명` : ''}</div></div></a>`; }).join('')}</div>` : '<div class="empty">3주 안에 시험이 없어요</div>'}</div></section>
+        ${todayRows ? `<section class="card"><div class="card-head"><h3>오늘 수업</h3></div><div class="card-body"><div class="list">${todayRows}</div></div></section>` : ''}
       </div>
     </div>`;
   }
@@ -265,15 +308,15 @@
     const classes = Store.all('classes');
     const rows = list.map(s => {
       const ln = lastNote(s.id);
-      const r = rate(attOf(s.id));
+      const nm = nextMeeting(s.id);
       return `<tr class="click" data-act="go" data-href="#/students/${s.id}">
         <td style="min-width:150px"><div class="row" style="flex-wrap:nowrap"><span class="av">${initial(s.name)}</span><div><b>${esc(s.name)}</b><div class="faint">${esc(s.goal || '목표 미입력')}</div></div></div></td>
         <td>${pill(statusOf(s.status))}</td>
         <td class="hide-m">${esc(s.category || '-')}<div class="faint">${esc(s.track || '')}</div></td>
         <td style="white-space:nowrap">${esc(staffName(s.mentorId))}</td>
-        <td class="hide-m">${(s.classIds || []).map(id => classes.find(c => c.id === id)).filter(Boolean).map(c => `<span class="pill outline">${esc(c.name)}</span>`).join(' ') || '<span class="faint">없음</span>'}</td>
+        <td class="hide-m">${(s.classIds || []).map(id => classes.find(c => c.id === id)).filter(c => c && !classEnded(c)).map(c => `<span class="pill outline">${esc(c.name)}</span>`).join(' ') || '<span class="faint">없음</span>'}</td>
         <td class="hide-m">${ln ? fmt(ln.date) : '<span class="faint">없음</span>'}</td>
-        <td class="num">${r == null ? '-' : r + '%'}</td></tr>`;
+        <td>${nm ? fmt(nm.date) : '<span class="faint">-</span>'}</td></tr>`;
     }).join('');
     const board = `<div class="board">${STATUS.map(st => {
       const items = list.filter(s => s.status === st.key);
@@ -290,7 +333,7 @@
       <select class="in" style="max-width:180px" data-change="stu-cat">${opt('', '카테고리 전체', f.cat)}${CATEGORIES.map(c => opt(c, c, f.cat)).join('')}</select>
       ${me().role !== 'mentor' ? `<select class="in" style="max-width:180px" data-change="stu-mentor">${opt('', '담당 전체', f.mentor)}${staff().map(s => opt(s.id, s.name, f.mentor)).join('')}</select>` : ''}
     </div>
-    ${f.view === 'board' ? board : `<div class="card tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>이름</th><th>상태</th><th class="hide-m">카테고리</th><th>담당</th><th class="hide-m">수업</th><th class="hide-m">최근 상담</th><th class="num">출석률</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">조건에 맞는 학생이 없어요</div>`}</div>`}`;
+    ${f.view === 'board' ? board : `<div class="card tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>이름</th><th>상태</th><th class="hide-m">카테고리</th><th>담당</th><th class="hide-m">수업</th><th class="hide-m">최근 상담</th><th>다음 면담</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">조건에 맞는 학생이 없어요</div>`}</div>`}`;
   }
 
   function studentForm(s) {
@@ -306,7 +349,7 @@
       ${field('한 줄 목표', input('goal', s.goal, 'placeholder="예: 정보처리기사 → 공기업 전산직"'), 'full')}
       ${field('수강 수업', classes.length
         ? `<div style="max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 12px">${sortBy(classes, c => (c.startDate || '') + c.name).map(c => `<label class="li check" style="padding:8px 0"><input type="checkbox" name="classIds" data-multi value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}><div class="main"><div class="t" style="font-weight:600">${esc(c.name)}</div><div class="s">${classPeriod(c)} · ${classTime(c)} · ${esc(c.room || '')}</div></div></label>`).join('')}</div>`
-        : `<div class="faint">아직 등록된 수업이 없어요. ${isLead() ? '<a href="#/classes" data-close-modal>수업·출결</a>에서 수업을 추가하거나 시간표 파일로 한꺼번에 등록한 뒤 고를 수 있어요.' : '팀장님께 수업 등록을 요청하세요.'}</div>`, 'full')}
+        : `<div class="faint">아직 등록된 수업이 없어요. ${isLead() ? '<a href="#/classes" data-close-modal>수업</a>에서 수업을 추가하거나 시간표 파일로 한꺼번에 등록한 뒤 고를 수 있어요.' : '팀장님께 수업 등록을 요청하세요.'}</div>`, 'full')}
     </div>`;
   }
   function newStudent(prefill, after) {
@@ -440,7 +483,7 @@
       '3. 임시 비밀번호는 원장님이 따로 알려드려요.',
       '4. 처음 로그인하면 오른쪽 위 내 이름 → 비밀번호 바꾸기에서 새 비밀번호로 바꿔주세요.',
       `5. ${p.name}님은 ${scope}이(가) 보여요.`,
-      '6. 매일: 오늘 화면에서 출석 체크 → 챙겨야 할 학생 확인 → 상담 후 기록 남기기',
+      '6. 매일: 오늘 화면에서 챙겨야 할 학생 확인 → 상담·면담 후 기록 남기기',
       "7. 휴대폰에서 주소를 열고 '홈 화면에 추가'하면 앱처럼 쓸 수 있어요."].join('\n');
   }
 
@@ -455,7 +498,7 @@
   }
 
   // ---------- 학생 상세 ----------
-  const STU_TABS = [['info', '기본 · 로드맵'], ['class', '수업 · 출결'], ['notes', '상담 · 면담'], ['certs', '자격증 · 할 일'], ['job', '취업 · 진학'], ['link', '학생 링크']];
+  const STU_TABS = [['info', '기본 · 로드맵'], ['class', '수업'], ['notes', '상담 · 면담'], ['certs', '자격증 · 할 일'], ['job', '취업 · 진학'], ['link', '학생 링크']];
   function pageStudent(id, tab) {
     const s = Store.get('students', id);
     if (!s || !Store.canSeeStudent(s)) return `<div class="card empty">학생을 찾을 수 없거나 볼 권한이 없어요. <a href="#/students">목록으로</a></div>`;
@@ -495,21 +538,13 @@
   function stuClass(s) {
     const classes = Store.all('classes');
     const mine = classes.filter(c => (s.classIds || []).includes(c.id));
-    const recent = sortBy(attOf(s.id), a => a.date).reverse().slice(0, 12);
     return `<div class="grid g2" style="align-items:start">
       <section class="card"><div class="card-head"><h3>수강 수업</h3>${isLead() ? `<button class="btn sm" data-act="class-new" data-for="${s.id}">+ 새 수업 만들기</button>` : ''}</div><div class="card-body">
-        ${classes.some(c => !classEnded(c)) ? '' : `<div class="faint" style="margin-bottom:8px">진행 중인 수업이 없어요. ${isLead() ? '오른쪽 위 버튼이나 수업·출결의 "시간표 파일로 등록"으로 먼저 수업을 만들어 주세요.' : '팀장님께 수업 등록을 요청하세요.'}</div>`}
+        ${classes.some(c => !classEnded(c)) ? '' : `<div class="faint" style="margin-bottom:8px">진행 중인 수업이 없어요. ${isLead() ? '오른쪽 위 버튼이나 수업 메뉴의 "시간표 파일로 등록"으로 먼저 수업을 만들어 주세요.' : '팀장님께 수업 등록을 요청하세요.'}</div>`}
         <div class="list">${sortBy(classes.filter(c => !classEnded(c) || (s.classIds || []).includes(c.id)), c => ((s.classIds || []).includes(c.id) ? '0' : '1') + (c.startDate || '') + c.name).map(c => `<label class="li check"><input type="checkbox" data-change="stu-class" data-id="${s.id}" value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}><div class="main"><div class="t">${esc(c.name)}${classEnded(c) ? ' <span class="pill">종료</span>' : ''}</div><div class="s">${classPeriod(c)} · ${classTime(c)}${c.room ? ' · ' + esc(c.room) : ''}${c.instructor ? ' · ' + esc(c.instructor) : ''}</div></div></label>`).join('')}</div>
       </div></section>
-      <section class="card"><div class="card-head"><h3>출결 요약</h3></div><div class="card-body">
-        ${mine.length ? mine.map(c => {
-          const a = attOf(s.id, c.id); const r = rate(a);
-          const n = k => a.filter(x => x.state === k).length;
-          return `<div style="margin-bottom:14px"><div class="row" style="justify-content:space-between"><b>${esc(c.name)}</b><span>${r == null ? '-' : r + '%'}</span></div>
-            <div class="meter" style="margin:6px 0"><i style="width:${r || 0}%"></i></div><div class="faint">출석 ${n('present')} · 지각 ${n('late')} · 결석 ${n('absent')}</div></div>`;
-        }).join('') : '<div class="faint">수강 중인 수업이 없어요</div>'}
-        <h4 style="margin:16px 0 4px;font-size:14px">최근 기록</h4>
-        <div class="list">${recent.map(a => `<div class="li"><span class="pill ${a.state === 'present' ? 'green' : a.state === 'late' ? 'amber' : 'red'}">${ATT[a.state]}</span><div class="main"><div class="s">${fmt(a.date)} · ${esc((classes.find(c => c.id === a.classId) || {}).name || '')}</div></div></div>`).join('') || '<div class="faint">기록이 없어요</div>'}</div>
+      <section class="card"><div class="card-head"><h3>수강 일정</h3></div><div class="card-body">
+        ${mine.length ? `<div class="list">${sortBy(mine, c => c.startDate || '').map(c => { const t = today(); const st = classEnded(c) ? ['', '종료'] : (c.startDate || '') > t ? ['amber', '개강 예정 ' + dday(c.startDate)] : ['green', '수강 중']; return `<a class="li" href="#/classes/${c.id}"><span class="pill ${st[0]}">${st[1]}</span><div class="main"><div class="t">${esc(c.name)}</div><div class="s">${classPeriod(c)} · ${classTime(c)}${c.room ? ' · ' + esc(c.room) : ''}</div>${c.note ? `<div class="s">${esc(c.note)}</div>` : ''}</div></a>`; }).join('')}</div>` : '<div class="faint">연결된 수업이 없어요. 왼쪽에서 체크하세요.</div>'}
       </div></section></div>`;
   }
 
@@ -602,7 +637,7 @@
     const list = sortBy(all.filter(c => classEnded(c) === ui.classArchived), c => (U.classOn(c, t) ? '0' : (c.startDate || '') <= t ? '1' : '2') + (c.startDate || '') + c.name);
     const studs = students();
     const viewToggle = `<div class="seg"><button class="${ui.classView === 'cards' ? 'on present' : ''}" data-act="class-view" data-v="cards">카드</button><button class="${ui.classView === 'grid' ? 'on present' : ''}" data-act="class-view" data-v="grid">시간표</button></div>`;
-    const head = `<div class="page-head"><div><h1>수업 · 출결</h1><p>반별 학생과 출결을 보고, 출결표를 엑셀로 받을 수 있어요</p></div>
+    const head = `<div class="page-head"><div><h1>수업</h1><p>반별 수강생을 보고, 학생과 수업을 연결해요</p></div>
       <div class="row">${viewToggle}${isLead() ? '<button class="btn" data-act="class-import">시간표 파일로 등록</button><button class="btn primary" data-act="class-new">+ 수업 추가</button>' : ''}</div></div>`;
     if (ui.classView === 'grid') return head + classGrid(all);
     return `${head}
@@ -678,33 +713,43 @@
     <p class="faint">점(●)은 오늘 수업이 있는 반이에요. 분홍은 국비 과정이고, 막대를 누르면 수업 상세로 가요. 같은 강의실에서 시간이 겹치는 반은 옆 칸에 나뉘어 보여요.</p>`;
   }
 
-  function sessionDates(c, upTo) {
-    const out = [];
-    const end = c.endDate && c.endDate < upTo ? c.endDate : upTo;
-    let d = c.startDate || addDays(end, -60);
-    if (diffDays(end, d) > 366) d = addDays(end, -366);
-    for (; d <= end; d = addDays(d, 1)) if ((c.days || []).includes(U.dow(d))) out.push(d);
-    return out;
-  }
   function pageClass(id) {
     const c = Store.get('classes', id);
     if (!c) return `<div class="card empty">수업을 찾을 수 없어요</div>`;
-    const t = today();
     const roster = sortBy(students().filter(s => (s.classIds || []).includes(c.id)), s => s.name);
-    const dates = sessionDates(c, t).slice(-10);
-    const attAll = Store.all('attendance').filter(a => a.classId === c.id);
-    const cell = (s, d) => { const a = attAll.find(x => x.studentId === s.id && x.date === d); return a ? a.state : ''; };
-    const sym = { present: '○', late: '△', absent: '✕', '': '·' };
+    const info = [['요일 · 시간', classTime(c)], ['기간', `${fmtFull(c.startDate)} ~ ${fmtFull(c.endDate)}`], ['강의실', c.room], ['강사', c.instructor], ['비고', c.note]].filter(x => x[1]);
     return `<a href="#/classes" class="faint" style="text-decoration:none">← 수업 목록</a>
-    <div class="page-head" style="margin-top:10px"><div><h1>${esc(c.name)}</h1><p>${(c.days || []).map(d => DAYS[d]).join('·')} ${esc(c.start)}~${esc(c.end)} · ${esc(c.room || '')} · ${fmtFull(c.startDate)} ~ ${fmtFull(c.endDate)}${c.gov ? ' · 국비 과정' : ''}</p></div>
-      <div class="row">${isLead() ? `<button class="btn" data-act="class-edit" data-id="${c.id}">수업 정보 수정</button>` : ''}</div></div>
-    <section class="card"><div class="card-head"><h3>최근 출결 (${dates.length}회)</h3><span class="faint">칸을 누르면 출석 → 지각 → 결석 → 비움 순서로 바뀌어요</span></div>
-      <div class="card-body tbl-wrap">${roster.length && dates.length ? `<table class="tbl att-grid"><thead><tr><th>학생</th>${dates.map(d => `<th style="text-align:center">${fmt(d).replace(/\(.\)/, '')}<br><span style="font-weight:500">${DAYS[U.dow(d)]}</span></th>`).join('')}<th class="num">출석률</th></tr></thead><tbody>
-        ${roster.map(s => { const r = rate(attAll.filter(a => a.studentId === s.id)); return `<tr><td style="white-space:nowrap"><a href="#/students/${s.id}/class">${esc(s.name)}</a>${ONGOING.includes(s.status) ? '' : ` <span class="pill">${esc(statusOf(s.status).label)}</span>`}</td>${dates.map(d => { const v = cell(s, d); return `<td class="cell ${v}" data-act="att-cycle" data-sid="${s.id}" data-cid="${c.id}" data-date="${d}" title="${v ? ATT[v] : '기록 없음'}">${sym[v]}</td>`; }).join('')}<td class="num">${r == null ? '-' : r + '%'}</td></tr>`; }).join('')}
-      </tbody></table>` : '<div class="empty">학생이나 수업 날짜가 아직 없어요</div>'}</div></section>
-    <section class="card" style="margin-top:16px"><div class="card-head"><h3>출결표 엑셀로 받기</h3><span class="faint">국비 과정 출결(HRD-Net) 대조용</span></div>
-      <div class="card-body"><div class="row" id="att-export">${input('from', c.startDate || addDays(t, -30), 'type="date" style="width:auto"')}<span>~</span>${input('to', t, 'type="date" style="width:auto"')}<button class="btn primary" data-act="att-export" data-id="${c.id}">출결표 받기 (CSV)</button></div>
-      <p class="faint">학생별 날짜 출결과 출석·지각·결석 합계, 출석률이 들어가요. 엑셀에서 바로 열려요.</p></div></section>`;
+    <div class="page-head" style="margin-top:10px"><div><h1>${esc(c.name)}</h1><p>${c.gov ? '<span class="pill blue">국비</span> ' : ''}${classEnded(c) ? '<span class="pill">종료</span>' : (c.startDate || '') > today() ? `<span class="pill amber">개강 ${dday(c.startDate)}</span>` : '<span class="pill green">진행 중</span>'}</p></div>
+      <div class="row">${(() => { const nx = nextCohort(c); return nx && roster.length ? `<button class="btn" data-act="class-next" data-id="${c.id}" title="${esc(nx.name)} ${fmt(nx.startDate)} 개강">다음 기수로 연결</button>` : ''; })()}<button class="btn" data-act="class-roster-csv" data-id="${c.id}">명단 엑셀 받기</button><button class="btn primary" data-act="class-link" data-id="${c.id}">학생 연결</button>${isLead() ? `<button class="btn" data-act="class-edit" data-id="${c.id}">수업 정보 수정</button>` : ''}</div></div>
+    <div class="grid g3" style="align-items:start">
+      <section class="card"><div class="card-head"><h3>수업 정보</h3></div><div class="card-body"><div class="list">${info.map(([k, v]) => `<div class="li"><span class="faint" style="width:72px">${k}</span><div class="main" style="white-space:pre-wrap">${esc(v)}</div></div>`).join('')}</div></div></section>
+      <section class="card span2 tbl-wrap"><div class="card-head"><h3>수강생 ${roster.length}명</h3><span class="faint">볼 수 있는 학생 기준</span></div><div class="card-body">
+        ${roster.length ? `<table class="tbl"><thead><tr><th>이름</th><th>상태</th><th>담당</th><th class="hide-m">최근 상담</th><th>다음 면담</th></tr></thead><tbody>
+        ${roster.map(s => { const ln = lastNote(s.id), nm = nextMeeting(s.id); return `<tr class="click" data-act="go" data-href="#/students/${s.id}"><td><b>${esc(s.name)}</b></td><td>${pill(statusOf(s.status))}</td><td style="white-space:nowrap">${esc(staffName(s.mentorId))}</td><td class="hide-m">${ln ? fmt(ln.date) : '<span class="faint">없음</span>'}</td><td>${nm ? fmt(nm.date) : '<span class="faint">-</span>'}</td></tr>`; }).join('')}
+        </tbody></table>` : '<div class="empty">아직 연결된 학생이 없어요. "학생 연결"을 눌러 고르세요.</div>'}
+      </div></section>
+    </div>`;
+  }
+  // 수업에 학생 여러 명 한꺼번에 연결
+  function linkStudents(c) {
+    const list = sortBy(students().filter(s => ONGOING.includes(s.status) || (s.classIds || []).includes(c.id)), s => staffName(s.mentorId) + s.name);
+    openModal(`${c.name} · 학생 연결`, list.length ? `<input class="in" placeholder="이름으로 찾기" id="link-q" style="margin-bottom:10px">
+      <div id="link-list" style="max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 12px">${list.map(s => `<label class="li check" data-name="${esc(s.name)}" style="padding:8px 0"><input type="checkbox" name="sids" data-multi value="${s.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}><div class="main"><div class="t" style="font-weight:600">${esc(s.name)}</div><div class="s">${esc(staffName(s.mentorId))} · ${esc(statusOf(s.status).label)}</div></div></label>`).join('')}</div>` : '<div class="empty">볼 수 있는 진행 중 학생이 없어요</div>', {
+      okText: '저장',
+      onOpen: bg => { const q = bg.querySelector('#link-q'); if (q) q.addEventListener('input', () => { const v = q.value.trim(); bg.querySelectorAll('#link-list [data-name]').forEach(el => { el.style.display = !v || el.dataset.name.includes(v) ? '' : 'none'; }); }); },
+      onOk: async root => {
+        const pick = new Set(vals(root).sids || []);
+        let changed = 0;
+        for (const s of list) {
+          const has = (s.classIds || []).includes(c.id);
+          if (has === pick.has(s.id)) continue;
+          s.classIds = has ? s.classIds.filter(x => x !== c.id) : (s.classIds || []).concat(c.id);
+          await Store.put('students', s); changed++;
+        }
+        toast(changed ? `${changed}명 바꿨어요` : '바뀐 게 없어요');
+        render();
+      }
+    });
   }
 
   function classForm(c) {
@@ -875,58 +920,6 @@
     });
   }
 
-  // ---------- 상담 문의 ----------
-  function pageLeads() {
-    const t = today();
-    const all = sortBy(Store.all('leads'), l => l.createdAt || '').reverse();
-    const month = t.slice(0, 7);
-    const thisMonth = all.filter(l => (l.createdAt || '').slice(0, 7) === month);
-    const reg = thisMonth.filter(l => l.status === 'registered').length;
-    const due = all.filter(l => ['new', 'contacted'].includes(l.status) && l.nextDate && l.nextDate <= t).length;
-    const tabs = [['open', '진행 중', l => ['new', 'contacted'].includes(l.status)], ['registered', '등록', l => l.status === 'registered'], ['closed', '보류·종료', l => l.status === 'closed'], ['all', '전체', () => true]];
-    const cur = tabs.find(x => x[0] === ui.leadTab) || tabs[0];
-    const list = all.filter(cur[2]);
-    return `<div class="page-head"><div><h1>상담 문의</h1><p>등록 전 문의를 관리하고, 등록하면 학생으로 바로 옮겨요</p></div>
-      <div class="row"><button class="btn" data-act="copy" data-v="${esc(ROOT + 'apply.html')}">신청 폼 링크 복사</button><button class="btn primary" data-act="lead-new">+ 문의 추가</button></div></div>
-    <div class="grid g4" style="margin-bottom:16px">
-      <div class="card stat"><div class="k">이번 달 문의</div><div class="v">${thisMonth.length}<small>건</small></div></div>
-      <div class="card stat"><div class="k">이번 달 등록</div><div class="v">${reg}<small>건</small></div></div>
-      <div class="card stat"><div class="k">등록 전환율</div><div class="v">${thisMonth.length ? Math.round(reg / thisMonth.length * 100) : 0}<small>%</small></div></div>
-      <div class="card stat ${due ? 'hl' : ''}"><div class="k">오늘까지 연락</div><div class="v">${due}<small>건</small></div></div>
-    </div>
-    <div class="chips" style="margin-bottom:12px">${tabs.map(([k, l, f]) => `<button class="chip ${ui.leadTab === k ? 'on' : ''}" data-act="lead-tab" data-v="${k}">${l}<b>${all.filter(f).length}</b></button>`).join('')}</div>
-    <div class="card tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>이름</th><th>관심 과정</th><th class="hide-m">경로</th><th>상태</th><th>다음 연락</th><th class="hide-m">메모</th><th></th></tr></thead><tbody>
-      ${list.map(l => `<tr><td><b>${esc(l.name)}</b><div class="faint">${esc(l.phone || '')}</div></td><td>${esc(l.interest || '')}</td><td class="hide-m">${esc(l.source || '')}</td>
-        <td><select class="in" style="width:auto;height:32px" data-change="lead-status" data-id="${l.id}">${LEAD_STATUS.map(x => opt(x.key, x.label, l.status)).join('')}</select></td>
-        <td>${l.nextDate ? `<span class="pill ${l.nextDate <= t && ['new', 'contacted'].includes(l.status) ? 'red' : 'outline'}">${fmt(l.nextDate)}</span>` : '<span class="faint">-</span>'}</td>
-        <td class="hide-m" style="max-width:240px">${esc(l.memo || '')}</td>
-        <td style="white-space:nowrap"><button class="btn sm" data-act="lead-edit" data-id="${l.id}">수정</button>${l.status !== 'registered' ? ` <button class="btn sm primary" data-act="lead-convert" data-id="${l.id}">등록 전환</button>` : ''}</td></tr>`).join('')}
-    </tbody></table>` : '<div class="empty">이 상태의 문의가 없어요</div>'}</div>
-    <p class="faint" style="margin-top:12px">신청 폼 링크를 홈페이지·인스타그램에 걸어두면 들어온 신청이 여기에 '신규'로 쌓여요.</p>`;
-  }
-  function editLead(l) {
-    const isNew = !l.id;
-    openModal(isNew ? '문의 추가' : '문의 수정', `<div class="form cols">
-      ${field('이름', input('name', l.name, 'required'))}
-      ${field('연락처', input('phone', l.phone, 'inputmode="tel"'))}
-      ${field('관심 과정', input('interest', l.interest))}
-      ${field('경로', `<select class="in" name="source">${['', '전화', '방문', '홈페이지', '온라인 신청', '인스타그램', '블로그', '지인 소개', '기타'].map(x => opt(x, x || '선택', l.source)).join('')}</select>`)}
-      ${field('상태', `<select class="in" name="status">${LEAD_STATUS.map(x => opt(x.key, x.label, l.status || 'new')).join('')}</select>`)}
-      ${field('다음 연락일', input('nextDate', l.nextDate || today(), 'type="date"'))}
-      ${field('메모', `<textarea class="in" name="memo">${esc(l.memo || '')}</textarea>`, 'full')}
-    </div>`, {
-      okText: isNew ? '추가' : '저장',
-      extra: isNew ? '' : `<button class="btn danger" data-act="lead-del" data-id="${l.id}">삭제</button>`,
-      onOk: async root => {
-        const v = vals(root);
-        if (!v.name) { toast('이름을 넣어주세요'); return false; }
-        await Store.put('leads', Object.assign({ createdAt: new Date().toISOString() }, l, v));
-        toast('저장했어요');
-        render();
-      }
-    });
-  }
-
   // ---------- 리포트 ----------
   function pageReport() {
     const t = today();
@@ -943,20 +936,18 @@
     const max = Math.max(1, ...byMonth.map(x => x.n));
     const rows = staff().map(m => {
       const mine = list.filter(s => s.mentorId === m.id);
-      const att = Store.all('attendance').filter(a => mine.some(s => s.id === a.studentId) && a.date >= from);
+      const notes = Store.all('notes').filter(n => mine.some(s => s.id === n.studentId) && (n.date || '') >= from);
       return {
         m, ongoing: ongoing(mine).length, neu: mine.filter(s => inRange(s.createdAt)).length,
         pass: mine.reduce((n, s) => n + (s.certs || []).filter(c => c.status === '합격' && inRange(c.date)).length, 0),
         job: mine.filter(s => outcome(s, ['employed', 'school'])).length,
         drop: mine.filter(s => outcome(s, ['dropped'])).length,
-        rate: rate(att)
+        notes: notes.length
       };
     }).filter(r => r.ongoing || r.neu || r.job || r.pass);
     ui._reportRows = rows;
-    const classRows = Store.all('classes').filter(c => !c.archived).map(c => {
-      const a = Store.all('attendance').filter(x => x.classId === c.id && x.date >= from);
-      return { c, n: list.filter(s => (s.classIds || []).includes(c.id) && ONGOING.includes(s.status)).length, rate: rate(a) };
-    });
+    const noteRows = staff().map(m => ({ m, n: Store.all('notes').filter(n => n.authorId === m.id && (n.date || '') >= from).length })).filter(x => x.n).sort((a, b) => b.n - a.n);
+    const noteMax = Math.max(1, ...noteRows.map(x => x.n));
     return `<div class="page-head"><div><h1>리포트</h1><p>${keys[0].replace('-', '.')} ~ ${t.slice(0, 7).replace('-', '.')} · 볼 수 있는 학생 기준</p></div>
       <div class="row"><div class="chips">${[3, 6, 12].map(n => `<button class="chip ${months === n ? 'on' : ''}" data-act="report-months" data-v="${n}">최근 ${n}개월</button>`).join('')}</div><button class="btn" data-act="report-csv">엑셀 받기</button></div></div>
     <div class="grid g4">
@@ -967,11 +958,11 @@
     </div>
     <div class="grid g2" style="margin-top:16px;align-items:start">
       <section class="card"><div class="card-head"><h3>월별 신규 등록</h3></div><div class="card-body"><div class="bars">${byMonth.map(x => `<div class="bar"><b>${x.n}</b><i style="height:${x.n / max * 100}%"></i><span>${Number(x.k.slice(5))}월</span></div>`).join('')}</div></div></section>
-      <section class="card"><div class="card-head"><h3>수업별 출석률</h3></div><div class="card-body">${classRows.map(r => `<div style="margin-bottom:12px"><div class="row" style="justify-content:space-between"><span>${esc(r.c.name)} <span class="faint">${r.n}명</span></span><b>${r.rate == null ? '-' : r.rate + '%'}</b></div><div class="meter" style="margin-top:6px"><i style="width:${r.rate || 0}%;${r.rate != null && r.rate < 80 ? 'background:var(--red)' : ''}"></i></div></div>`).join('') || '<div class="faint">진행 중인 수업이 없어요</div>'}</div></section>
+      <section class="card"><div class="card-head"><h3>직원별 상담 기록</h3><span class="faint">기간 내 작성 건수</span></div><div class="card-body">${noteRows.map(r => `<div style="margin-bottom:12px"><div class="row" style="justify-content:space-between"><span>${esc(r.m.name)} <span class="faint">${esc(roleLabel(r.m))}</span></span><b>${r.n}건</b></div><div class="meter" style="margin-top:6px"><i style="width:${r.n / noteMax * 100}%"></i></div></div>`).join('') || '<div class="faint">아직 상담 기록이 없어요</div>'}</div></section>
     </div>
     <section class="card tbl-wrap" style="margin-top:16px"><div class="card-head"><h3>담당자별 성과</h3><span class="faint">상태 변경 이력 기준</span></div><div class="card-body">
-      <table class="tbl"><thead><tr><th>담당</th><th class="hide-m">팀</th><th class="num">진행 중</th><th class="num">신규</th><th class="num">합격</th><th class="num">취업·진학</th><th class="num">이탈</th><th class="num">출석률</th></tr></thead><tbody>
-      ${rows.map(r => `<tr><td><b>${esc(r.m.name)}</b> <span class="faint">${esc(roleLabel(r.m))}</span></td><td class="hide-m">${esc(teamFull(r.m.teamId))}</td><td class="num">${r.ongoing}</td><td class="num">${r.neu}</td><td class="num">${r.pass}</td><td class="num">${r.job}</td><td class="num">${r.drop}</td><td class="num">${r.rate == null ? '-' : r.rate + '%'}</td></tr>`).join('')}
+      <table class="tbl"><thead><tr><th>담당</th><th class="hide-m">팀</th><th class="num">진행 중</th><th class="num">신규</th><th class="num">합격</th><th class="num">취업·진학</th><th class="num">이탈</th><th class="num">상담 기록</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td><b>${esc(r.m.name)}</b> <span class="faint">${esc(roleLabel(r.m))}</span></td><td class="hide-m">${esc(teamFull(r.m.teamId))}</td><td class="num">${r.ongoing}</td><td class="num">${r.neu}</td><td class="num">${r.pass}</td><td class="num">${r.job}</td><td class="num">${r.drop}</td><td class="num">${r.notes}</td></tr>`).join('')}
       </tbody></table></div></section>`;
   }
 
@@ -1079,6 +1070,7 @@
       </div></section>
       <section class="card"><div class="card-head"><h3>백업</h3></div><div class="card-body">
         <p class="muted" style="margin-top:0">볼 수 있는 모든 데이터를 파일 하나로 받아요. 주 1회 받아 공용 드라이브에 보관하세요.</p>
+        <p style="margin:0 0 12px">${lastBackup() ? `마지막 백업: <b>${fmtFull(lastBackup().at)}</b> · ${esc(lastBackup().by || '')} <span class="pill ${backupAge() >= 7 ? 'amber' : 'green'}">${backupAge()}일 전</span>` : '<span class="pill amber">아직 백업 기록이 없어요</span>'}</p>
         <div class="row"><button class="btn primary" data-act="backup">백업 파일 받기</button>${isAdmin() ? '<label class="btn">백업 파일 불러오기<input type="file" accept=".json" data-change="restore" hidden></label>' : ''}</div>
         ${!Store.live ? '<div style="margin-top:14px"><button class="btn danger" data-act="demo-reset">데모 데이터 처음으로 되돌리기</button></div>' : ''}
       </div></section>
@@ -1162,7 +1154,6 @@
     else if (p0 === 'classes' && p1) html = pageClass(p1);
     else if (p0 === 'classes') html = pageClasses();
     else if (p0 === 'exams') html = pageExams();
-    else if (p0 === 'leads') html = pageLeads();
     else if (p0 === 'report') html = pageReport();
     else if (p0 === 'settings') html = pageSettings();
     else { active = 'home'; html = pageHome(); }
@@ -1201,30 +1192,15 @@
         onOpen: bg => { bg.querySelector('[data-act="copy-guide"]').onclick = e => { e.stopPropagation(); copy(text).then(() => toast('안내 문구를 복사했어요')); }; }
       });
     },
-    att: async el => {
-      const { sid, cid, date, v } = el.dataset;
-      const a = Store.all('attendance').find(x => x.studentId === sid && x.classId === cid && x.date === date);
-      if (a && a.state === v) await Store.del('attendance', a.id);
-      else await Store.put('attendance', Object.assign(a || { studentId: sid, classId: cid, date }, { state: v, by: me().id }));
-      render();
-    },
-    'att-cycle': async el => {
-      const { sid, cid, date } = el.dataset;
-      const a = Store.all('attendance').find(x => x.studentId === sid && x.classId === cid && x.date === date);
-      const next = { '': 'present', present: 'late', late: 'absent', absent: '' }[a ? a.state : ''];
-      if (!next) await Store.del('attendance', a.id);
-      else await Store.put('attendance', Object.assign(a || { studentId: sid, classId: cid, date }, { state: next, by: me().id }));
-      render();
-    },
     'stu-status': el => { ui.stu.status = el.dataset.v; render(); },
     'stu-view': el => { ui.stu.view = el.dataset.v; render(); },
     'stu-csv': () => {
       const classes = Store.all('classes');
-      const rows = [['이름', '연락처', '상태', '카테고리', '전공', '담당', '팀', '목표', '수업', '출석률', '취업·진학처', '등록일']];
+      const rows = [['이름', '연락처', '상태', '카테고리', '전공', '담당', '팀', '목표', '수업', '최근 상담', '다음 면담', '취업·진학처', '등록일']];
       sortBy(filteredStudents(), s => s.name).forEach(s => {
-        const r = rate(attOf(s.id));
+        const ln = lastNote(s.id), nm = nextMeeting(s.id);
         rows.push([s.name, s.phone, statusOf(s.status).label, s.category, s.track, staffName(s.mentorId), teamName(s.teamId), s.goal,
-          (s.classIds || []).map(id => (classes.find(c => c.id === id) || {}).name).filter(Boolean).join(' / '), r == null ? '' : r + '%', (s.employment || {}).company || '', (s.createdAt || '').slice(0, 10)]);
+          (s.classIds || []).map(id => (classes.find(c => c.id === id) || {}).name).filter(Boolean).join(' / '), ln ? ln.date : '', nm ? nm.date : '', (s.employment || {}).company || '', (s.createdAt || '').slice(0, 10)]);
       });
       U.download(`학생목록_${today()}.csv`, U.csv(rows));
     },
@@ -1310,7 +1286,7 @@
     'stu-delete': async el => {
       const s = Store.get('students', el.dataset.id);
       if (!(await confirmBox(`${s.name} 학생과 모든 기록을 삭제할까요? 되돌릴 수 없어요.`, '삭제'))) return;
-      for (const col of ['attendance', 'notes', 'meetings', 'tasks']) for (const r of Store.all(col).filter(r => r.studentId === s.id)) await Store.del(col, r.id);
+      for (const col of ['notes', 'meetings', 'tasks']) for (const r of Store.all(col).filter(r => r.studentId === s.id)) await Store.del(col, r.id);
       for (const e of Store.all('exams').filter(e => (e.studentIds || []).includes(s.id))) { e.studentIds = e.studentIds.filter(x => x !== s.id); await Store.put('exams', e); }
       await Store.del('students', s.id);
       await Store.log('delete', s.id, `학생 삭제: ${s.name}`);
@@ -1335,27 +1311,25 @@
     'class-del': async el => {
       document.querySelectorAll('.modal-bg').forEach(m => m.remove());
       const c = Store.get('classes', el.dataset.id);
-      if (!(await confirmBox(`'${c.name}' 수업을 삭제할까요? 출결 기록도 함께 지워져요. 보통은 '종료된 수업'으로 표시하는 걸 권해요.`, '삭제'))) return;
-      for (const a of Store.all('attendance').filter(a => a.classId === c.id)) await Store.del('attendance', a.id);
+      if (!(await confirmBox(`'${c.name}' 수업을 삭제할까요? 학생들과의 연결도 풀려요. 보통은 '종료 처리'를 권해요.`, '삭제'))) return;
       for (const s of Store.all('students').filter(s => (s.classIds || []).includes(c.id))) { s.classIds = s.classIds.filter(x => x !== c.id); await Store.put('students', s); }
       await Store.del('classes', c.id);
       await Store.log('delete', c.id, `수업 삭제: ${c.name}`);
       location.hash = '#/classes';
     },
-    'att-export': el => {
+    'class-link': el => linkStudents(Store.get('classes', el.dataset.id)),
+    'cohort-move': el => { const x = (ui._cohorts || [])[Number(el.dataset.i)]; if (x) moveCohort(x.from, x.to, x.studs); },
+    'class-next': el => {
+      const c = Store.get('classes', el.dataset.id), nx = nextCohort(c);
+      const list = ongoing(students()).filter(s => (s.classIds || []).includes(c.id) && !(s.classIds || []).includes(nx.id));
+      if (!list.length) return toast(`모든 학생이 이미 ${nx.name}에 연결돼 있어요`);
+      moveCohort(c, nx, list);
+    },
+    'class-roster-csv': el => {
       const c = Store.get('classes', el.dataset.id);
-      const v = vals(document.getElementById('att-export'));
-      const dates = sessionDates(c, v.to || today()).filter(d => d >= (v.from || '0000'));
-      const roster = sortBy(students().filter(s => (s.classIds || []).includes(c.id)), s => s.name);
-      const att = Store.all('attendance').filter(a => a.classId === c.id);
-      const rows = [['이름', '연락처'].concat(dates, ['출석', '지각', '결석', '출석률'])];
-      roster.forEach(s => {
-        const cells = dates.map(d => { const a = att.find(x => x.studentId === s.id && x.date === d); return a ? ATT[a.state] : ''; });
-        const n = k => cells.filter(x => x === ATT[k]).length;
-        const tot = n('present') + n('late') + n('absent');
-        rows.push([s.name, s.phone].concat(cells, [n('present'), n('late'), n('absent'), tot ? Math.round((n('present') + n('late')) / tot * 100) + '%' : '']));
-      });
-      U.download(`출결표_${c.name}_${v.from}_${v.to}.csv`, U.csv(rows));
+      const rows = [['이름', '연락처', '상태', '담당', '최근 상담', '다음 면담']];
+      sortBy(students().filter(s => (s.classIds || []).includes(c.id)), s => s.name).forEach(s => { const ln = lastNote(s.id), nm = nextMeeting(s.id); rows.push([s.name, s.phone, statusOf(s.status).label, staffName(s.mentorId), ln ? ln.date : '', nm ? nm.date : '']); });
+      U.download(`수강생명단_${c.name}_${today()}.csv`, U.csv(rows));
     },
     'exam-past': el => { ui.examPast = el.dataset.v === '1'; render(); },
     'exam-family': el => { ui.examQ = el.dataset.v; render(); },
@@ -1366,25 +1340,10 @@
       if (!(await confirmBox('이 시험을 삭제할까요?', '삭제'))) return;
       await Store.del('exams', el.dataset.id); render();
     },
-    'lead-tab': el => { ui.leadTab = el.dataset.v; render(); },
-    'lead-new': () => editLead({}),
-    'lead-edit': el => editLead(Store.get('leads', el.dataset.id)),
-    'lead-del': async el => {
-      document.querySelectorAll('.modal-bg').forEach(m => m.remove());
-      if (!(await confirmBox('이 문의를 삭제할까요?', '삭제'))) return;
-      await Store.del('leads', el.dataset.id); render();
-    },
-    'lead-convert': el => {
-      const l = Store.get('leads', el.dataset.id);
-      newStudent({ name: l.name, phone: l.phone, goal: l.interest }, async s => {
-        l.status = 'registered'; l.studentId = s.id;
-        await Store.put('leads', l);
-      });
-    },
     'report-months': el => { ui.reportMonths = Number(el.dataset.v); render(); },
     'report-csv': () => {
-      const rows = [['담당', '권한', '팀', '진행 중', '신규', '자격증 합격', '취업·진학', '이탈', '출석률']];
-      (ui._reportRows || []).forEach(r => rows.push([r.m.name, roleLabel(r.m), teamFull(r.m.teamId), r.ongoing, r.neu, r.pass, r.job, r.drop, r.rate == null ? '' : r.rate + '%']));
+      const rows = [['담당', '권한', '팀', '진행 중', '신규', '자격증 합격', '취업·진학', '이탈', '상담 기록']];
+      (ui._reportRows || []).forEach(r => rows.push([r.m.name, roleLabel(r.m), teamFull(r.m.teamId), r.ongoing, r.neu, r.pass, r.job, r.drop, r.notes]));
       U.download(`성과리포트_최근${ui.reportMonths}개월_${today()}.csv`, U.csv(rows));
     },
     'team-new': () => editTeam({}),
@@ -1411,7 +1370,12 @@
       loadAccounts(true);
       render();
     },
-    backup: () => U.download(`학사관리_백업_${today()}.json`, JSON.stringify(Store.exportAll(), null, 2), 'application/json'),
+    backup: async () => {
+      U.download(`학사관리_백업_${today()}.json`, JSON.stringify(Store.exportAll(), null, 2), 'application/json');
+      try { await Store.put('settings', { id: 'backup', at: new Date().toISOString(), by: me().name }); } catch (e) { console.warn(e); }
+      toast('백업 파일을 받았어요. 공용 드라이브에 보관하세요');
+      render();
+    },
     'demo-reset': async () => {
       if (!(await confirmBox('데모 데이터를 처음 상태로 되돌릴까요? 이 브라우저에서 바꾼 내용이 모두 사라져요.', '되돌리기'))) return;
       Store.resetDemo(); location.hash = '#/'; location.reload();
@@ -1437,7 +1401,6 @@
       e.studentIds = Array.from(set); await Store.put('exams', e); render();
     },
     'task-toggle': async el => { const k = Store.get('tasks', el.dataset.id); k.done = el.checked; await Store.put('tasks', k); render(); },
-    'lead-status': async el => { const l = Store.get('leads', el.dataset.id); l.status = el.value; await Store.put('leads', l); toast('상태를 바꿨어요'); render(); },
     restore: async el => {
       const f = el.files[0]; if (!f) return;
       try {

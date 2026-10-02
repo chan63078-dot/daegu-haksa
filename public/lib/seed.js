@@ -83,22 +83,7 @@ window.HAKSA_SEED = function (db, { uid, newToken }) {
   // 자격증 합격 예시
   db.students[1].certs[0].date = d(-50);
 
-  // 최근 2주 출결
-  const att = [];
-  for (let i = 14; i >= 1; i--) {
-    const date = d(-i);
-    db.classes.forEach(c => {
-      if (!U.classOn(c, date)) return;
-      db.students.filter(s => (s.classIds || []).includes(c.id) && U.ONGOING.includes(s.status)).forEach(s => {
-        let state = 'present';
-        if (s.id === 's9' && i <= 3) state = 'absent';          // 연속 결석 예시
-        else if ((s.id.length + i) % 11 === 0) state = 'late';
-        else if ((s.id.length * 3 + i) % 17 === 0) state = 'absent';
-        att.push({ id: uid(), studentId: s.id, classId: c.id, date, state });
-      });
-    });
-  }
-  db.attendance = att;
+  db.attendance = [];
 
   db.notes = [
     { id: uid(), studentId: 's1', type: '면담', date: d(-6), body: 'SQLD 시험 접수 완료. 기출 2회독 목표.', nextDate: d(8), authorId: 'st-m1' },
@@ -129,11 +114,7 @@ window.HAKSA_SEED = function (db, { uid, newToken }) {
     { id: 'e-adsp', name: 'ADsP (예시)', regStart: d(20), regEnd: d(27), examDate: d(45), resultDate: d(70), studentIds: ['s3'], memo: '' }
   ];
 
-  db.leads = [
-    { id: uid(), name: '문가은', phone: '010-0000-1111', interest: '국비 AI 과정', source: '홈페이지', status: 'new', nextDate: t, memo: '평일 저녁 통화 희망', createdAt: now },
-    { id: uid(), name: '노태윤', phone: '010-0000-2222', interest: '정보처리기사', source: '지인 소개', status: 'contacted', nextDate: d(2), memo: '설명회 참석 예정', createdAt: d(-4) + 'T09:00:00.000Z' },
-    { id: uid(), name: '류다인', phone: '010-0000-3333', interest: '파이썬 기초', source: '인스타그램', status: 'registered', nextDate: '', memo: '', createdAt: d(-20) + 'T09:00:00.000Z' }
-  ];
+  db.leads = [];
 
   db.logs = [
     { id: uid(), at: d(-25) + 'T10:00:00.000Z', actorId: 'st-m1', actorName: '최민호', action: 'status', target: 's7', detail: '수강중 → 취업 완료' },
