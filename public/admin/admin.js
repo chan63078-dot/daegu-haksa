@@ -10,8 +10,13 @@
     examPast: false,
     leadTab: 'open',
     reportMonths: 6,
+    classView: 'cards',   // 'cards' | 'grid'
+    gridMonth: null,      // 'YYYY-MM'
+    gridKind: 'weekday',  // 'weekday' | 'weekend' | 'all'
     accounts: null       // 로그인 계정 목록 { email: {lastSignIn} } | 'loading' | { error }
   };
+
+  try { const v = localStorage.getItem('haksa-class-view'); if (v === 'grid' || v === 'cards') ui.classView = v; } catch (e) {}
 
   // ---------- 도우미 ----------
   const me = () => Store.me();
@@ -593,8 +598,11 @@
     const all = Store.all('classes');
     const list = sortBy(all.filter(c => classEnded(c) === ui.classArchived), c => (U.classOn(c, t) ? '0' : (c.startDate || '') <= t ? '1' : '2') + (c.startDate || '') + c.name);
     const studs = students();
-    return `<div class="page-head"><div><h1>수업 · 출결</h1><p>반별 학생과 출결을 보고, 출결표를 엑셀로 받을 수 있어요</p></div>
-      <div class="row">${isLead() ? '<button class="btn" data-act="class-import">시간표 파일로 등록</button><button class="btn primary" data-act="class-new">+ 수업 추가</button>' : ''}</div></div>
+    const viewToggle = `<div class="seg"><button class="${ui.classView === 'cards' ? 'on present' : ''}" data-act="class-view" data-v="cards">카드</button><button class="${ui.classView === 'grid' ? 'on present' : ''}" data-act="class-view" data-v="grid">시간표</button></div>`;
+    const head = `<div class="page-head"><div><h1>수업 · 출결</h1><p>반별 학생과 출결을 보고, 출결표를 엑셀로 받을 수 있어요</p></div>
+      <div class="row">${viewToggle}${isLead() ? '<button class="btn" data-act="class-import">시간표 파일로 등록</button><button class="btn primary" data-act="class-new">+ 수업 추가</button>' : ''}</div></div>`;
+    if (ui.classView === 'grid') return head + classGrid(all);
+    return `${head}
     <div class="chips" style="margin-bottom:16px"><button class="chip ${!ui.classArchived ? 'on' : ''}" data-act="class-arch" data-v="0">진행·예정<b>${all.filter(c => !classEnded(c)).length}</b></button><button class="chip ${ui.classArchived ? 'on' : ''}" data-act="class-arch" data-v="1">종료<b>${all.filter(classEnded).length}</b></button></div>
     <div class="grid g3">${list.map(c => {
       const n = studs.filter(s => (s.classIds || []).includes(c.id) && ONGOING.includes(s.status)).length;
@@ -606,6 +614,66 @@
         <div class="faint">${fmt(c.startDate)} ~ ${fmt(c.endDate)}</div>
         <div style="margin-top:8px;font-weight:700">학생 ${n}명</div></a>`;
     }).join('') || `<div class="card empty" style="grid-column:1/-1">${ui.classArchived ? '끝난 수업이 없어요' : `아직 수업이 없어요.${isLead() ? '<br>매달 받는 "IT대구 ○월 평일/주말 강의 시간표" 파일을 <b>시간표 파일로 등록</b>에 올리면 한꺼번에 들어가요.' : ''}`}</div>`}</div>`;
+  }
+
+  // ---------- 시간표 보기 (강의실 × 시간, 막대) ----------
+  const toMin = t => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
+  function classGrid(all) {
+    const t = today();
+    const month = ui.gridMonth || t.slice(0, 7);
+    const [yy, mm] = month.split('-').map(Number);
+    const from = `${month}-01`, to = U.iso(new Date(yy, mm, 0));
+    const isWeekend = c => (c.days || []).length > 0 && c.days.every(d => d === 0 || d === 6);
+    const list = all.filter(c => c.start && c.end && (!c.startDate || c.startDate <= to) && (!c.endDate || c.endDate >= from) && !c.archived)
+      .filter(c => ui.gridKind === 'all' || (ui.gridKind === 'weekend' ? isWeekend(c) : !isWeekend(c)));
+    const kindChips = [['weekday', '평일'], ['weekend', '주말'], ['all', '전체']].map(([k, l]) => `<button class="chip ${ui.gridKind === k ? 'on' : ''}" data-act="grid-kind" data-v="${k}">${l}<b>${all.filter(c => c.start && (!c.startDate || c.startDate <= to) && (!c.endDate || c.endDate >= from) && !c.archived && (k === 'all' || (k === 'weekend' ? isWeekend(c) : !isWeekend(c)))).length}</b></button>`).join('');
+    const nav = `<div class="row" style="margin-bottom:12px;gap:12px">
+      <div class="row" style="gap:4px"><button class="btn sm" data-act="grid-month" data-v="-1" aria-label="이전 달">◀</button><b style="min-width:96px;text-align:center">${yy}년 ${mm}월</b><button class="btn sm" data-act="grid-month" data-v="1" aria-label="다음 달">▶</button>${month !== t.slice(0, 7) ? '<button class="btn sm ghost" data-act="grid-month" data-v="0">이번 달</button>' : ''}</div>
+      <div class="chips">${kindChips}</div>
+      <span class="faint">${fmt(from)} ~ ${fmt(to)} 사이에 진행되는 수업</span></div>`;
+    if (!list.length) return nav + `<div class="card empty">이 달에 진행되는 ${ui.gridKind === 'weekend' ? '주말 ' : ui.gridKind === 'weekday' ? '평일 ' : ''}수업이 없어요</div>`;
+
+    // 강의실별로, 시간·기간·요일이 겹치는 반은 옆 칸(레인)으로
+    const overlap = (a, b) => toMin(a.start) < toMin(b.end) && toMin(b.start) < toMin(a.end)
+      && (a.startDate || '') <= (b.endDate || '9999') && (b.startDate || '') <= (a.endDate || '9999')
+      && (a.days || []).some(d => (b.days || []).includes(d));
+    const rooms = Array.from(new Set(list.map(c => c.room || '강의실 미정'))).sort((a, b) => a.localeCompare(b, 'ko'));
+    const cols = [];
+    rooms.forEach(room => {
+      const lanes = [];
+      sortBy(list.filter(c => (c.room || '강의실 미정') === room), c => c.start + (c.startDate || '')).forEach(c => {
+        let lane = lanes.find(l => !l.some(x => overlap(x, c)));
+        if (!lane) { lane = []; lanes.push(lane); }
+        lane.push(c);
+      });
+      lanes.forEach((lane, i) => cols.push({ room, first: i === 0, span: lanes.length, items: lane }));
+    });
+    const startMin = Math.floor(Math.min(...list.map(c => toMin(c.start))) / 60) * 60;
+    const endMin = Math.ceil(Math.max(...list.map(c => toMin(c.end))) / 60) * 60;
+    const SLOT = 30, PX = 30;  // 30분 = 30px
+    const height = (endMin - startMin) / SLOT * PX;
+    const studs = students();
+    const times = [];
+    for (let m = startMin; m < endMin; m += SLOT) times.push(m);
+    const hhmm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+    const block = c => {
+      const top = (toMin(c.start) - startMin) / SLOT * PX, h = Math.max((toMin(c.end) - toMin(c.start)) / SLOT * PX - 3, 22);
+      const n = studs.filter(s => (s.classIds || []).includes(c.id)).length;
+      const live = U.classOn(c, t);
+      return `<a class="tt-block ${c.gov ? 'gov' : ''} ${classEnded(c) ? 'ended' : ''}" href="#/classes/${c.id}" style="top:${top}px;height:${h}px" title="${esc(c.name)}\n${esc(classTime(c))}\n${esc(classPeriod(c))}${c.instructor ? '\n' + esc(c.instructor) + ' 강사' : ''}">
+        <b>${live ? '<i class="tt-dot"></i>' : ''}${esc(c.name)}</b>
+        <span>${esc(c.room || '')}${c.instructor ? ' | ' + esc(c.instructor) : ''}</span>
+        ${h > 70 ? `<span>${esc(c.start)}~${esc(c.end)} · ${(c.days || []).map(d => DAYS[d]).join('')}</span><span>${classPeriod(c)}${n ? ` · ${n}명` : ''}</span>` : ''}
+      </a>`;
+    };
+    return nav + `<div class="tt-wrap card"><div class="tt" style="grid-template-columns:56px repeat(${cols.length}, minmax(150px, 1fr))">
+      <div class="tt-corner"></div>
+      ${cols.map(col => col.first ? `<div class="tt-room" style="grid-column:span ${col.span}">${esc(col.room)}</div>` : '').join('')}
+      <div class="tt-times" style="height:${height}px">${times.map(m => `<div style="height:${PX}px" class="${m % 60 ? 'half' : ''}">${hhmm(m)}</div>`).join('')}</div>
+      ${cols.map(col => `<div class="tt-col ${col.first ? 'first' : ''}" style="height:${height}px;background-size:100% ${PX * 2}px">${col.items.map(block).join('')}</div>`).join('')}
+    </div></div>
+    <p class="faint">점(●)은 오늘 수업이 있는 반이에요. 분홍은 국비 과정이고, 막대를 누르면 수업 상세로 가요. 같은 강의실에서 시간이 겹치는 반은 옆 칸에 나뉘어 보여요.</p>`;
   }
 
   function sessionDates(c, upTo) {
@@ -1230,6 +1298,14 @@
       toast('삭제했어요'); location.hash = '#/students';
     },
     'class-arch': el => { ui.classArchived = el.dataset.v === '1'; render(); },
+    'class-view': el => { ui.classView = el.dataset.v; try { localStorage.setItem('haksa-class-view', ui.classView); } catch (e) {} render(); },
+    'grid-kind': el => { ui.gridKind = el.dataset.v; render(); },
+    'grid-month': el => {
+      const v = Number(el.dataset.v);
+      if (!v) ui.gridMonth = null;
+      else { const [y, m] = (ui.gridMonth || today().slice(0, 7)).split('-').map(Number); const d = new Date(y, m - 1 + v, 1); ui.gridMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+      render();
+    },
     'class-new': el => {
       document.querySelectorAll('.modal-bg').forEach(m => m.remove());
       if (el && el.dataset.for) ui.classFor = el.dataset.for; else ui.classFor = null;

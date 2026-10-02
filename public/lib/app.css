@@ -243,3 +243,24 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
   .page-head h1 { font-size: 22px; }
   .hide-m { display: none; }
 }
+
+/* 시간표 보기 (강의실 × 시간) */
+.tt-wrap { overflow: auto; max-height: calc(100vh - 240px); padding: 0; }
+.tt { display: grid; position: relative; min-width: max-content; }
+.tt-corner, .tt-room { position: sticky; top: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--line); height: 40px; }
+.tt-corner { left: 0; z-index: 4; }
+.tt-room { display: flex; align-items: center; padding: 0 12px; font-weight: 700; font-size: 13.5px; border-left: 1px solid var(--line); }
+.tt-times { position: sticky; left: 0; z-index: 2; background: var(--surface); border-right: 1px solid var(--line); }
+.tt-times div { font-size: 11.5px; color: var(--ink-2); text-align: right; padding: 0 8px 0 0; transform: translateY(-7px); font-variant-numeric: tabular-nums; }
+.tt-times div.half { color: transparent; }
+.tt-times div:first-child { transform: none; }
+.tt-col { position: relative; border-left: 1px dashed var(--line-2); background-image: linear-gradient(to bottom, var(--line-2) 1px, transparent 1px); }
+.tt-col.first { border-left: 1px solid var(--line); }
+.tt-block { position: absolute; left: 3px; right: 3px; border-radius: 6px; padding: 5px 7px; overflow: hidden; text-decoration: none; display: flex; flex-direction: column; gap: 1px;
+  background: var(--blue-soft); border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent); color: var(--ink); font-size: 12px; line-height: 1.35; }
+.tt-block:hover { z-index: 1; box-shadow: 0 4px 14px rgba(0, 0, 0, .15); }
+.tt-block.gov { background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 40%, transparent); }
+.tt-block.ended { opacity: .55; }
+.tt-block b { font-size: 12.5px; font-weight: 700; display: block; }
+.tt-block span { color: var(--ink-2); font-size: 11.5px; }
+.tt-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 5px; vertical-align: 1px; }
