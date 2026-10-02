@@ -86,5 +86,51 @@
     catch (e) { return new TextDecoder('euc-kr').decode(buf); }
   }
 
-  window.U = { roleLabel, SCOPE, parseCSV, readTextFile, STATUS, ONGOING, CATEGORIES, TRACKS, ROLES, LEAD_STATUS, ATT, DAYS, pad, iso, parse, today, addDays, diffDays, dow, fmt, fmtFull, dday, esc, classOn, statusOf, leadStatusOf, csv, download };
+  // 공휴일 (대체공휴일 포함, 정부 발표에 따라 바뀔 수 있음)
+  const HOLIDAYS = {
+    '2026-01-01': '신정', '2026-02-16': '설날 연휴', '2026-02-17': '설날', '2026-02-18': '설날 연휴', '2026-03-01': '삼일절', '2026-03-02': '대체공휴일',
+    '2026-05-05': '어린이날', '2026-05-24': '부처님오신날', '2026-05-25': '대체공휴일', '2026-06-03': '지방선거', '2026-06-06': '현충일',
+    '2026-08-15': '광복절', '2026-08-17': '대체공휴일', '2026-09-24': '추석 연휴', '2026-09-25': '추석', '2026-09-26': '추석 연휴',
+    '2026-10-03': '개천절', '2026-10-05': '대체공휴일', '2026-10-09': '한글날', '2026-12-25': '성탄절',
+    '2027-01-01': '신정', '2027-02-06': '설날 연휴', '2027-02-07': '설날', '2027-02-08': '설날 연휴', '2027-03-01': '삼일절',
+    '2027-05-05': '어린이날', '2027-05-13': '부처님오신날', '2027-06-06': '현충일', '2027-08-15': '광복절',
+    '2027-09-14': '추석 연휴', '2027-09-15': '추석', '2027-09-16': '추석 연휴', '2027-10-03': '개천절', '2027-10-09': '한글날', '2027-12-25': '성탄절'
+  };
+
+  // 비고의 "휴강: 09/24,25, 10/05" "휴강: 09/24~25" 같은 날짜를 읽음 (" / " 뒤는 다른 메모)
+  function offDates(note, startDate) {
+    const out = new Set();
+    const baseY = Number(String(startDate || today()).slice(0, 4));
+    const baseM = Number(String(startDate || today()).slice(5, 7));
+    String(note || '').split(' / ').forEach(part => {
+      const m = part.match(/휴강\s*:?\s*(.*)$/);
+      if (!m) return;
+      let month = null;
+      m[1].split(/[,\s]+/).filter(Boolean).forEach(tok => {
+        const r = tok.match(/^(?:(\d{1,2})\/)?(\d{1,2})(?:~(?:(\d{1,2})\/)?(\d{1,2}))?/);
+        if (!r) return;
+        if (r[1]) month = Number(r[1]);
+        if (!month) return;
+        const y = month < baseM - 6 ? baseY + 1 : baseY;
+        const from = new Date(y, month - 1, Number(r[2]));
+        const toMonth = r[3] ? Number(r[3]) : month;
+        const to = new Date(toMonth < month ? y + 1 : y, toMonth - 1, r[4] ? Number(r[4]) : Number(r[2]));
+        for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) out.add(iso(d));
+        month = toMonth;
+      });
+    });
+    return out;
+  }
+  // 수업(또는 학습 계획)이 실제로 열리는 날짜들: 요일·기간 안에서 공휴일과 휴강일 제외
+  function sessions(c) {
+    if (!c.startDate || !c.endDate || !(c.days || []).length) return [];
+    const off = offDates(c.note, c.startDate);
+    const out = [];
+    for (let d = c.startDate; d <= c.endDate && out.length < 400; d = addDays(d, 1)) {
+      if (c.days.includes(dow(d)) && !HOLIDAYS[d] && !off.has(d)) out.push(d);
+    }
+    return out;
+  }
+
+  window.U = { HOLIDAYS, offDates, sessions, roleLabel, SCOPE, parseCSV, readTextFile, STATUS, ONGOING, CATEGORIES, TRACKS, ROLES, LEAD_STATUS, ATT, DAYS, pad, iso, parse, today, addDays, diffDays, dow, fmt, fmtFull, dday, esc, classOn, statusOf, leadStatusOf, csv, download };
 })();

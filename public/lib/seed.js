@@ -44,7 +44,11 @@ window.HAKSA_SEED = function (db, { uid, newToken }) {
   db.students = [
     S('s1', '김하늘', '취준 20대', '비전공', 'gov', 'st-m1', ['c-kdt', 'c-sqld'], 'AI 서비스 개발자 취업', {
       roadmap: [{ title: '파이썬 기초', done: true }, { title: 'SQLD 취득', done: false }, { title: 'LLM 프로젝트', done: false }, { title: '포트폴리오·지원', done: false }],
-      certs: [{ name: 'SQLD', status: '준비중', date: '' }], createdAt: d(-40) + 'T09:00:00.000Z'
+      certs: [{ name: 'SQLD', status: '준비중', date: '' }], createdAt: d(-40) + 'T09:00:00.000Z',
+      plans: [
+        { id: 'p1', name: '파이썬 용어집 정독', days: [1, 2], startDate: d(-18), endDate: d(40), note: '하루 2쪽' },
+        { id: 'p2', name: '인강 SQL 기초', days: [3, 5], startDate: d(-5), endDate: d(25), note: '' }
+      ]
     }),
     S('s2', '이도현', '대학 3·4학년', '전공', 'active', 'st-m1', ['c-ip'], '정보처리기사 → 공기업 전산직', {
       roadmap: [{ title: '필기 합격', done: true }, { title: '실기 합격', done: false }, { title: 'NCS 준비', done: false }],

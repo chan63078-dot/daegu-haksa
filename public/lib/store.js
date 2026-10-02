@@ -187,7 +187,7 @@
       if (!loadLocal()) { window.HAKSA_SEED(db, { uid, newToken }); saveLocal(); }
       const s = db.students.find(x => x.token === token);
       if (!s) return null;
-      const pick = ({ id, name, goal, intro, roadmap, certs, classIds, status }) => ({ id, name, goal, intro, roadmap, certs, classIds, status });
+      const pick = ({ id, name, goal, intro, roadmap, certs, classIds, status, plans }) => ({ id, name, goal, intro, roadmap, certs, classIds, status, plans: plans || [] });
       return {
         student: pick(s),
         classes: db.classes.filter(c => (s.classIds || []).includes(c.id)),

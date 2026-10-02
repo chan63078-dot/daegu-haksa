@@ -6,28 +6,84 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#1f5c46">
-  <title>나의 학습 페이지</title>
-  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <title>나의 학습 캘린더</title>
+  <link rel="icon" href="icon.svg?v=__BUILD__" type="image/svg+xml">
   <link rel="stylesheet" href="lib/app.css?v=__BUILD__">
   <style>
-    .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 60px; }
-    .hero { background: var(--brand); color: var(--brand-ink); border-radius: 20px; padding: 22px 22px 20px; }
-    .hero .faint { color: color-mix(in srgb, var(--brand-ink) 72%, transparent); }
-    .hero h1 { font-size: 24px; margin: 6px 0 4px; }
-    .sec { margin-top: 16px; }
-    .day { display: flex; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line-2); }
-    .day:first-child { border-top: none; }
-    .day .d { width: 52px; flex: none; text-align: center; }
-    .day .d b { display: block; font-size: 20px; line-height: 1.1; }
-    .day.today .d b { color: var(--accent); }
-    .step { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; }
-    .step .dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); flex: none; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; }
-    .step.done .dot { background: var(--brand); border-color: var(--brand); }
-    .step.now .dot { border-color: var(--accent); }
-    .step.now .t { color: var(--accent); }
-    .exam { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line-2); }
-    .exam:first-child { border-top: none; }
-    .exam .dd { min-width: 64px; text-align: center; font-weight: 800; color: var(--blue); background: var(--blue-soft); border-radius: 10px; padding: 8px 6px; }
+    .wrap { max-width: 1160px; margin: 0 auto; padding: 20px 16px 60px; }
+    .hero { position: relative; overflow: hidden; background: linear-gradient(135deg, #1f5c46, #2d7a5d); color: #fff; border-radius: 22px; padding: 24px 26px; display: flex; gap: 20px; justify-content: space-between; align-items: flex-start; }
+    .hero::after { content: ''; position: absolute; right: -60px; top: -60px; width: 220px; height: 220px; border-radius: 50%; background: rgba(255, 255, 255, .07); }
+    .hero .sub { color: rgba(255, 255, 255, .75); font-size: 13px; }
+    .hero h1 { font-size: 26px; margin: 6px 0 4px; }
+    .flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 14px; }
+    .flow span { background: rgba(255, 255, 255, .14); border-radius: 999px; padding: 4px 11px; font-size: 12.5px; font-weight: 600; }
+    .flow span.done { background: rgba(255, 255, 255, .32); }
+    .flow span.now { background: #fff; color: #1f5c46; }
+    .flow i { color: rgba(255, 255, 255, .6); font-style: normal; font-size: 12px; }
+    .todaybox { position: relative; z-index: 1; text-align: center; background: rgba(255, 255, 255, .14); border-radius: 14px; padding: 10px 14px; min-width: 76px; }
+    .todaybox b { display: block; font-size: 22px; letter-spacing: -.02em; }
+    .todaybox span { font-size: 12px; color: rgba(255, 255, 255, .8); }
+
+    .keys { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+    .key { border-top: 4px solid var(--line); padding: 14px 16px; }
+    .key .k { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+    .key .v { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 2px 0; }
+    .key .t { font-weight: 700; font-size: 14px; }
+    .key .s { font-size: 12.5px; color: var(--ink-2); }
+    .key.class { border-top-color: var(--green); } .key.class .v { color: var(--green); }
+    .key.open { border-top-color: var(--accent); } .key.open .v { color: var(--accent); }
+    .key.exam { border-top-color: var(--blue); } .key.exam .v { color: var(--blue); }
+    .key.meet { border-top-color: var(--violet); } .key.meet .v { color: var(--violet); }
+
+    .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin: 22px 0 12px; }
+    .month { font-size: 22px; font-weight: 800; min-width: 104px; text-align: center; font-variant-numeric: tabular-nums; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+
+    .cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    .cal .dow { text-align: center; font-size: 12.5px; font-weight: 700; color: var(--ink-2); padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .cal .dow.sun, .day .n.sun { color: var(--red); } .cal .dow.sat, .day .n.sat { color: var(--blue); }
+    .day { min-height: 104px; border-right: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); padding: 6px 6px 8px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .day:nth-child(7n + 7) { border-right: none; }
+    .day.out { background: var(--surface-2); }
+    .day.out .n { color: var(--ink-3); }
+    .day:hover { background: var(--surface-2); }
+    .day.sel { box-shadow: inset 0 0 0 2px var(--brand); }
+    .day .n { font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    .day.today .n b { background: var(--brand); color: #fff; border-radius: 999px; min-width: 22px; height: 22px; display: inline-grid; place-items: center; padding: 0 6px; }
+    .day .hol { font-size: 11px; color: var(--red); font-weight: 600; }
+    .ev { display: flex; gap: 4px; font-size: 11.5px; line-height: 1.3; border-radius: 5px; padding: 2px 6px; background: var(--gray-soft); color: var(--ink); min-width: 0; }
+    .ev span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ev small { flex: none; color: var(--ink-2); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .ev.class { background: var(--green-soft); } .ev.plan { background: var(--amber-soft); } .ev.exam { background: var(--blue-soft); }
+    .ev.meet { background: var(--violet-soft); } .ev.task { background: var(--gray-soft); } .ev.task.late { background: var(--red-soft); } .ev.done { text-decoration: line-through; opacity: .6; }
+    .more { font-size: 11px; color: var(--ink-3); padding-left: 4px; }
+
+    .side .card + .card { margin-top: 12px; }
+    .agenda .li { align-items: flex-start; }
+    .tag { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 6px; padding: 1px 7px; margin-right: 4px; }
+    .tag.class { background: var(--green-soft); color: var(--green); } .tag.plan { background: var(--amber-soft); color: var(--amber); } .tag.exam { background: var(--blue-soft); color: var(--blue); }
+    .tag.meet { background: var(--violet-soft); color: var(--violet); } .tag.task { background: var(--gray-soft); color: var(--gray); }
+    .course { padding: 10px 0; border-top: 1px solid var(--line-2); }
+    .course:first-child { border-top: none; }
+    .course .meter { margin-top: 6px; }
+    .listview .dayrow { display: grid; grid-template-columns: 86px 1fr; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line-2); }
+    .listview .dayrow:first-child { border-top: none; }
+    .listview .dayrow.today .d { color: var(--brand); }
+    .listview .d { font-weight: 800; }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .keys { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 560px) {
+      .hero { flex-direction: column; }
+      .hero h1 { font-size: 22px; }
+      .day { min-height: 64px; padding: 4px 3px; }
+      .ev { font-size: 0; padding: 0; height: 6px; border-radius: 3px; }
+      .ev small { display: none; }
+      .day .hol { font-size: 9.5px; }
+      .key .v { font-size: 21px; }
+    }
   </style>
 </head>
 <body>
@@ -39,77 +95,163 @@
   <script src="lib/store.js?v=__BUILD__"></script>
   <script>
   (function () {
-    const { esc, fmt, today, addDays, dday, DAYS, ATT } = U;
+    const { esc, fmt, today, addDays, diffDays, dday, DAYS, HOLIDAYS, sessions, iso, parse } = U;
     const app = document.getElementById('app');
     const token = new URLSearchParams(location.search).get('t');
     const C = Store.config;
-    let data;
+    const t = today();
+    const ui = { month: t.slice(0, 7), sel: t, view: 'cal', filter: 'all' };
+    try { const v = localStorage.getItem('haksa-stu-view'); if (v === 'list' || v === 'cal') ui.view = v; } catch (e) {}
+    let data, byDate, items;
 
     function notFound(msg) {
-      app.innerHTML = `<div class="card card-pad" style="margin-top:40px;text-align:center"><div class="brand-mark" style="margin:0 auto 12px">대</div><h2 style="font-size:18px">${esc(msg)}</h2><p class="faint">담당 멘토에게 새 링크를 요청하세요.${C.CONTACT ? `<br>문의 ${esc(C.CONTACT)}` : ''}</p></div>`;
+      app.innerHTML = `<div class="card card-pad" style="margin:40px auto;max-width:420px;text-align:center"><div class="brand-mark" style="margin:0 auto 12px">대</div><h2 style="font-size:18px">${esc(msg)}</h2><p class="faint">담당 멘토에게 새 링크를 요청하세요.${C.CONTACT ? `<br>문의 ${esc(C.CONTACT)}` : ''}</p></div>`;
+    }
+
+    // 날짜별 일정 만들기: 수업 회차, 집에서 학습, 시험(접수·시험·발표), 면담, 할 일 마감
+    function build() {
+      byDate = {};
+      const add = (d, e) => { (byDate[d] = byDate[d] || []).push(e); };
+      items = [];
+      data.classes.forEach(c => {
+        const ss = sessions(c);
+        items.push({ kind: 'class', c, ss });
+        ss.forEach((d, i) => add(d, { kind: 'class', title: c.name, n: i + 1, N: ss.length, time: `${c.start || ''}~${c.end || ''}`, place: c.room }));
+      });
+      (data.student.plans || []).forEach(p => {
+        const ss = sessions(p);
+        items.push({ kind: 'plan', c: p, ss });
+        ss.forEach((d, i) => add(d, { kind: 'plan', title: p.name, n: i + 1, N: ss.length, place: '집에서', time: p.note || '' }));
+      });
+      data.exams.forEach(e => {
+        if (e.regStart) add(e.regStart, { kind: 'exam', title: `${e.name} 접수 시작`, time: e.regEnd ? `~${fmt(e.regEnd)} 마감` : '' });
+        if (e.regEnd && e.regEnd !== e.regStart) add(e.regEnd, { kind: 'exam', title: `${e.name} 접수 마감`, time: '' });
+        const last = e.examEnd || e.examDate;
+        for (let d = e.examDate; d && d <= last; d = addDays(d, 1)) add(d, { kind: 'exam', title: `${e.name} 시험`, time: e.examEnd && e.examEnd !== e.examDate ? `${fmt(e.examDate)}~${fmt(e.examEnd)} 중 응시` : '' });
+        if (e.resultDate) add(e.resultDate, { kind: 'exam', title: `${e.name} 발표`, time: '' });
+      });
+      data.meetings.forEach(m => add(m.date, { kind: 'meet', title: `면담${m.topic ? ' · ' + m.topic : ''}`, time: m.time || '' }));
+      data.tasks.forEach(k => { if (k.due) add(k.due, { kind: 'task', title: k.title, time: '마감', done: k.done, late: !k.done && k.due < t, id: k.id }); });
+      Object.values(byDate).forEach(list => list.sort((a, b) => ['exam', 'meet', 'class', 'plan', 'task'].indexOf(a.kind) - ['exam', 'meet', 'class', 'plan', 'task'].indexOf(b.kind)));
+    }
+    const pass = e => ui.filter === 'all' || (ui.filter === 'class' && (e.kind === 'class' || e.kind === 'plan')) || (ui.filter === 'event' && (e.kind === 'exam' || e.kind === 'meet')) || (ui.filter === 'task' && e.kind === 'task');
+
+    function keyCards() {
+      // 다음 수업, 다음 개강, 다음 시험(접수 포함), 다음 면담
+      let next = null;
+      Object.keys(byDate).sort().forEach(d => { if (!next && d >= t) { const e = byDate[d].find(x => x.kind === 'class'); if (e) next = { d, e }; } });
+      const opening = data.classes.filter(c => c.startDate > t).sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
+      const ex = data.exams.map(e => ({ e, d: e.regEnd >= t && e.regStart <= t ? e.regEnd : e.examDate, reg: e.regEnd >= t && e.regStart <= t }))
+        .filter(x => (x.e.examEnd || x.e.examDate) >= t).sort((a, b) => a.d.localeCompare(b.d))[0];
+      const mt = data.meetings.filter(m => m.date >= t).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')))[0];
+      const card = (cls, k, v, ti, s) => `<div class="card key ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="t">${ti}</div><div class="s">${s}</div></div>`;
+      return `<div class="keys">
+        ${next ? card('class', '다음 수업', dday(next.d), `${esc(next.e.title)} · ${next.e.n}/${next.e.N}회`, `${fmt(next.d)} ${esc(next.e.time)}${next.e.place ? ' · ' + esc(next.e.place) : ''}`) : card('class', '다음 수업', '-', '예정된 수업이 없어요', '')}
+        ${opening ? card('open', '다음 개강', dday(opening.startDate), esc(opening.name), `${fmt(opening.startDate)} · ${(opening.days || []).map(d => DAYS[d]).join('·')}`) : card('open', '다음 개강', '-', '예정된 개강이 없어요', '')}
+        ${ex ? card('exam', ex.reg ? '시험 접수 마감' : '다음 시험', dday(ex.d), esc(ex.e.name), ex.reg ? `${fmt(ex.e.regEnd)}까지 접수 · 시험 ${fmt(ex.e.examDate)}` : `시험 ${fmt(ex.e.examDate)}${ex.e.examEnd && ex.e.examEnd !== ex.e.examDate ? '~' + fmt(ex.e.examEnd) : ''}`) : card('exam', '다음 시험', '-', '연결된 시험이 없어요', '멘토에게 응시 시험을 알려주세요')}
+        ${mt ? card('meet', '다음 면담', dday(mt.date), esc(mt.topic || '멘토 면담'), `${fmt(mt.date)} ${esc(mt.time || '')}`) : card('meet', '다음 면담', '-', '예정된 면담이 없어요', '')}
+      </div>`;
+    }
+
+    function calendar() {
+      const [y, m] = ui.month.split('-').map(Number);
+      const first = new Date(y, m - 1, 1);
+      const start = iso(new Date(y, m - 1, 1 - first.getDay()));
+      const cells = [];
+      for (let i = 0; i < 42; i++) {
+        const d = addDays(start, i);
+        if (i >= 35 && d.slice(0, 7) !== ui.month) break;
+        const list = (byDate[d] || []).filter(pass);
+        const dw = U.dow(d), hol = HOLIDAYS[d];
+        const shown = list.slice(0, 3);
+        cells.push(`<div class="day ${d.slice(0, 7) !== ui.month ? 'out' : ''} ${d === t ? 'today' : ''} ${d === ui.sel ? 'sel' : ''}" data-d="${d}">
+          <div class="n ${dw === 0 || hol ? 'sun' : dw === 6 ? 'sat' : ''}"><b>${Number(d.slice(8))}</b>${hol ? `<span class="hol">${esc(hol)}</span>` : ''}</div>
+          ${shown.map(e => `<div class="ev ${e.kind} ${e.done ? 'done' : ''} ${e.late ? 'late' : ''}" title="${esc(e.title)}${e.N ? ` (${e.n}/${e.N}회)` : ''}"><span>${esc(short(e.title))}</span>${e.N ? `<small>${e.n}/${e.N}</small>` : ''}</div>`).join('')}
+          ${list.length > 3 ? `<div class="more">+${list.length - 3}</div>` : ''}
+        </div>`);
+      }
+      return `<div class="card" style="overflow:hidden"><div class="cal">${DAYS.map((x, i) => `<div class="dow ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${x}</div>`).join('')}${cells.join('')}</div></div>`;
+    }
+    const short = s => String(s).replace(/^\[[^\]]+\]\s*/, '').replace(/\s·\s.*$/, '');
+
+    function listView() {
+      const days = Object.keys(byDate).filter(d => d.slice(0, 7) === ui.month).sort();
+      const rows = days.map(d => { const list = byDate[d].filter(pass); return list.length ? `<div class="dayrow ${d === t ? 'today' : ''}"><div class="d">${fmt(d)}${d === t ? '<div class="faint">오늘</div>' : ''}${HOLIDAYS[d] ? `<div class="faint" style="color:var(--red)">${esc(HOLIDAYS[d])}</div>` : ''}</div><div>${list.map(ev).join('')}</div></div>` : ''; }).join('');
+      return `<div class="card card-pad listview">${rows || '<div class="empty">이 달에는 일정이 없어요</div>'}</div>`;
+    }
+    const KIND = { class: '학원 수업', plan: '집에서 학습', exam: '시험', meet: '면담', task: '할 일' };
+    const ev = e => `<div style="padding:4px 0;${e.done ? 'text-decoration:line-through;opacity:.6' : ''}"><span class="tag ${e.kind}">${KIND[e.kind]}</span><b style="font-size:14px">${esc(e.title)}</b>${e.N ? ` <span class="faint">${e.n}/${e.N}회</span>` : ''}${e.time || e.place ? `<div class="faint" style="margin-left:2px">${esc([e.time, e.place].filter(Boolean).join(' · '))}</div>` : ''}</div>`;
+
+    function side() {
+      const list = (byDate[ui.sel] || []);
+      const tasks = data.tasks.slice().sort((a, b) => (a.done - b.done) || ((a.due || '9') < (b.due || '9') ? -1 : 1));
+      const courses = items.filter(x => x.ss.length || x.c.startDate).sort((a, b) => (a.c.startDate || '').localeCompare(b.c.startDate || ''));
+      const course = x => {
+        const done = x.ss.filter(d => d < t).length, N = x.ss.length;
+        const st = (x.c.endDate || '') < t ? '종료' : (x.c.startDate || '') > t ? `개강 ${dday(x.c.startDate)}` : '진행 중';
+        return `<div class="course"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><b style="font-size:14px">${esc(x.c.name)}</b><span class="tag ${x.kind}">${x.kind === 'plan' ? '집에서' : st}</span></div>
+          <div class="faint">${fmt(x.c.startDate)}~${fmt(x.c.endDate)} · ${(x.c.days || []).map(d => DAYS[d]).join('·')}${x.kind === 'class' && x.c.start ? ' ' + esc(x.c.start) : ''}${x.c.room ? ' · ' + esc(x.c.room) : ''}</div>
+          ${N ? `<div class="meter"><i style="width:${Math.round(done / N * 100)}%"></i></div><div class="faint">${done}/${N}회 진행</div>` : ''}</div>`;
+      };
+      return `<div class="side">
+        <section class="card"><div class="card-head"><h3>${fmt(ui.sel)}${ui.sel === t ? ' · 오늘' : ''}</h3>${HOLIDAYS[ui.sel] ? `<span class="pill red">${esc(HOLIDAYS[ui.sel])}</span>` : ''}</div>
+          <div class="card-body agenda">${list.length ? list.map(ev).join('') : '<div class="faint">이 날은 일정이 없어요</div>'}</div></section>
+        <section class="card"><div class="card-head"><h3>할 일</h3><span class="faint">${tasks.filter(k => !k.done).length}개 남음</span></div><div class="card-body">
+          ${tasks.length ? `<div class="list">${tasks.map(k => `<label class="li check"><input type="checkbox" data-task="${esc(k.id)}" ${k.done ? 'checked' : ''}><span class="grow" style="${k.done ? 'text-decoration:line-through;color:var(--ink-3)' : ''}">${esc(k.title)}</span>${k.due ? `<span class="pill ${!k.done && k.due < t ? 'red' : 'outline'}">${fmt(k.due)}</span>` : ''}</label>`).join('')}</div>` : '<div class="faint">지금은 할 일이 없어요</div>'}
+        </div></section>
+        <section class="card"><div class="card-head"><h3>수강 과정</h3><span class="faint">${courses.length}개</span></div><div class="card-body">${courses.map(course).join('') || '<div class="faint">연결된 과정이 없어요</div>'}</div></section>
+        ${(data.student.certs || []).length ? `<section class="card"><div class="card-head"><h3>자격증</h3></div><div class="card-body"><div class="list">${data.student.certs.map(c => `<div class="li"><div class="main"><div class="t">${esc(c.name)}</div></div><span class="pill ${c.status === '합격' ? 'green' : c.status === '불합격' ? 'red' : 'amber'}">${esc(c.status)}</span></div>`).join('')}</div></div></section>` : ''}
+      </div>`;
     }
 
     function render() {
       const s = data.student;
-      const t = today();
-      const days = [];
-      for (let i = 0; i < 7; i++) {
-        const d = addDays(t, i);
-        const cls = data.classes.filter(c => U.classOn(c, d));
-        const meet = data.meetings.filter(m => m.date === d);
-        if (cls.length || meet.length) days.push({ d, cls, meet });
-      }
       const road = s.roadmap || [];
       const nowIdx = road.findIndex(r => !r.done);
-      const done = road.filter(r => r.done).length;
-      const att = data.attendance;
-      const r = att.length ? Math.round(att.filter(a => a.state !== 'absent').length / att.length * 100) : null;
-      const exams = data.exams.filter(e => (e.examEnd || e.examDate) >= t).sort((a, b) => a.examDate < b.examDate ? -1 : 1);
-      const tasks = data.tasks.slice().sort((a, b) => (a.done - b.done) || ((a.due || '9') < (b.due || '9') ? -1 : 1));
-      const certs = (s.certs || []);
-
+      const [y, m] = ui.month.split('-').map(Number);
+      const monthItems = items.filter(x => x.ss.some(d => d.slice(0, 7) === ui.month));
       app.innerHTML = `
-      <div class="row" style="margin-bottom:14px"><span class="brand-mark">대</span><b>${esc(C.ACADEMY_NAME || '')}</b></div>
       <section class="hero">
-        <div class="faint">${fmt(t)} · 나의 학습 페이지</div>
-        <h1>${esc(s.name)}님, 안녕하세요</h1>
-        <div>${esc(s.goal || '')}</div>
-        ${s.intro ? `<p class="faint" style="margin:10px 0 0">${esc(s.intro)}</p>` : ''}
-        <div class="row" style="margin-top:16px;gap:20px">
-          <div><div class="faint">수강 중인 수업</div><b style="font-size:22px">${data.classes.filter(c => (!c.startDate || c.startDate <= t) && (!c.endDate || c.endDate >= t)).length}</b></div>
-          <div><div class="faint">로드맵</div><b style="font-size:22px">${done}/${road.length}</b></div>
-          <div><div class="faint">남은 할 일</div><b style="font-size:22px">${tasks.filter(k => !k.done).length}</b></div>
+        <div style="position:relative;z-index:1">
+          <div class="sub">${esc(C.ACADEMY_NAME || '')} · 학습 캘린더</div>
+          <h1>${esc(s.name)} 님 학습 캘린더</h1>
+          <div class="sub" style="font-size:14px">${esc(s.intro || s.goal || '학원 수업, 집에서 학습, 시험과 면담을 한 화면에서 확인해요.')}</div>
+          ${road.length ? `<div class="flow">${road.map((r, i) => `<span class="${r.done ? 'done' : i === nowIdx ? 'now' : ''}">${r.done ? '✓ ' : ''}${esc(r.title)}</span>`).join('<i>→</i>')}</div>` : ''}
         </div>
+        <div class="todaybox"><span>오늘</span><b>${Number(t.slice(5, 7))}.${Number(t.slice(8))}</b><span>${DAYS[U.dow(t)]}요일</span></div>
       </section>
-
-      <section class="card sec"><div class="card-head"><h3>앞으로 7일 일정</h3></div><div class="card-body">
-        ${days.length ? days.map(x => `<div class="day ${x.d === t ? 'today' : ''}"><div class="d"><span class="faint">${x.d === t ? '오늘' : DAYS[U.dow(x.d)]}</span><b>${Number(x.d.slice(8))}</b></div><div class="grow">
-          ${x.cls.map(c => `<div><b>${esc(c.name)}</b><div class="faint">${esc(c.start)}~${esc(c.end)} · ${esc(c.room || '')}</div></div>`).join('')}
-          ${x.meet.map(m => `<div style="margin-top:4px"><span class="pill amber">면담</span> ${esc(m.time || '')} ${esc(m.topic || '')}</div>`).join('')}
-        </div></div>`).join('') : '<div class="empty">7일 안에 예정된 수업이 없어요</div>'}
-        <p class="faint" style="margin-bottom:0">수업 날짜는 휴강·보강에 따라 바뀔 수 있어요.</p>
-      </div></section>
-
-      ${exams.length ? `<section class="card sec"><div class="card-head"><h3>시험 일정</h3></div><div class="card-body">
-        ${exams.map(e => `<div class="exam"><div class="dd">${e.examDate <= t ? '시험중' : dday(e.examDate)}</div><div class="grow"><b>${esc(e.name)}</b><div class="faint">시험 ${fmt(e.examDate)}${e.examEnd && e.examEnd !== e.examDate ? '~' + fmt(e.examEnd) : ''}${e.regEnd >= t ? ` · 접수 ${fmt(e.regStart)}~${fmt(e.regEnd)}` : ''}${e.resultDate ? ` · 발표 ${fmt(e.resultDate)}` : ''}</div></div></div>`).join('')}
-      </div></section>` : ''}
-
-      <section class="card sec"><div class="card-head"><h3>할 일</h3><span class="faint">끝내면 체크하세요</span></div><div class="card-body">
-        ${tasks.length ? `<div class="list">${tasks.map(k => `<label class="li check"><input type="checkbox" data-task="${esc(k.id)}" ${k.done ? 'checked' : ''}><span class="grow" style="${k.done ? 'text-decoration:line-through;color:var(--ink-3)' : ''}">${esc(k.title)}</span>${k.due ? `<span class="pill ${!k.done && k.due < t ? 'red' : 'outline'}">${fmt(k.due)}</span>` : ''}</label>`).join('')}</div>` : '<div class="empty">지금은 할 일이 없어요</div>'}
-      </div></section>
-
-      ${road.length ? `<section class="card sec"><div class="card-head"><h3>나의 로드맵</h3><span class="faint">${Math.round(done / road.length * 100)}%</span></div><div class="card-body">
-        <div class="meter" style="margin-bottom:10px"><i style="width:${done / road.length * 100}%"></i></div>
-        ${road.map((x, i) => `<div class="step ${x.done ? 'done' : i === nowIdx ? 'now' : ''}"><span class="dot">${x.done ? '✓' : ''}</span><div class="t" style="font-weight:${i === nowIdx ? 700 : 500}">${esc(x.title)}${i === nowIdx ? ' · 지금 단계' : ''}</div></div>`).join('')}
-      </div></section>` : ''}
-
-      ${certs.length ? `<section class="card sec"><div class="card-head"><h3>자격증</h3></div><div class="card-body"><div class="list">
-        ${certs.map(c => `<div class="li"><div class="main"><div class="t">${esc(c.name)}</div></div><span class="pill ${c.status === '합격' ? 'green' : c.status === '불합격' ? 'red' : 'amber'}">${esc(c.status)}</span></div>`).join('')}
-      </div></div></section>` : ''}
-
+      ${keyCards()}
+      <div class="bar">
+        <div class="row"><button class="btn sm" data-act="prev" aria-label="이전 달">◀</button><span class="month">${y}. ${String(m).padStart(2, '0')}</span><button class="btn sm" data-act="next" aria-label="다음 달">▶</button><button class="btn sm" data-act="today">오늘</button></div>
+        <div class="row">
+          <div class="seg"><button class="${ui.view === 'cal' ? 'on present' : ''}" data-act="view" data-v="cal">달력</button><button class="${ui.view === 'list' ? 'on present' : ''}" data-act="view" data-v="list">목록</button></div>
+          <div class="chips">${[['all', '전체'], ['class', '수업·학습'], ['event', '시험·면담'], ['task', '할 일']].map(([k, l]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-act="filter" data-v="${k}">${l}</button>`).join('')}</div>
+        </div>
+      </div>
+      ${monthItems.length ? `<details class="card card-pad" style="margin-bottom:12px" ${window.innerWidth > 900 ? '' : ''}><summary style="cursor:pointer;font-weight:700">이달의 과정 · 학습 ${monthItems.length}개</summary>
+        <div class="list" style="margin-top:8px">${monthItems.map(x => `<div class="li"><span class="tag ${x.kind}">${x.kind === 'plan' ? '집에서' : '학원'}</span><div class="main"><div class="t">${esc(x.c.name)}</div><div class="s">${fmt(x.c.startDate)} → ${fmt(x.c.endDate)} · ${(x.c.days || []).map(d => DAYS[d]).join('·')} · ${x.ss.length}회</div></div></div>`).join('')}</div></details>` : ''}
+      <div class="layout">
+        <div>${ui.view === 'cal' ? calendar() : listView()}
+          <p class="faint" style="margin:8px 2px 0">수업 날짜는 공휴일과 휴강을 빼고 계산했어요. 휴강·보강은 바뀔 수 있으니 멘토 안내를 우선으로 확인하세요.</p></div>
+        ${side()}
+      </div>
       <p class="faint" style="text-align:center;margin-top:24px">이 링크는 ${esc(s.name)}님 전용이에요. 다른 사람과 공유하지 마세요.${C.CONTACT ? `<br>문의 ${esc(C.CONTACT)}` : ''}</p>`;
     }
 
+    app.addEventListener('click', e => {
+      const day = e.target.closest('[data-d]');
+      if (day) { ui.sel = day.dataset.d; render(); if (window.innerWidth <= 900) document.querySelector('.side').scrollIntoView({ behavior: 'smooth' }); return; }
+      const b = e.target.closest('[data-act]');
+      if (!b) return;
+      const [y, m] = ui.month.split('-').map(Number);
+      const go = k => { const d = new Date(y, m - 1 + k, 1); ui.month = iso(d).slice(0, 7); };
+      if (b.dataset.act === 'prev') go(-1);
+      if (b.dataset.act === 'next') go(1);
+      if (b.dataset.act === 'today') { ui.month = t.slice(0, 7); ui.sel = t; }
+      if (b.dataset.act === 'view') { ui.view = b.dataset.v; try { localStorage.setItem('haksa-stu-view', ui.view); } catch (err) {} }
+      if (b.dataset.act === 'filter') ui.filter = b.dataset.v;
+      render();
+    });
     app.addEventListener('change', async e => {
       const id = e.target.dataset.task;
       if (!id) return;
@@ -117,7 +259,7 @@
         await Store.studentSetTask(token, id, e.target.checked);
         const k = data.tasks.find(x => x.id === id);
         if (k) k.done = e.target.checked;
-        render();
+        build(); render();
       } catch (err) { e.target.checked = !e.target.checked; alert('저장하지 못했어요. 잠시 후 다시 시도해주세요.'); }
     });
 
@@ -125,8 +267,9 @@
     Store.studentView(token).then(d => {
       if (!d || !d.student) return notFound('열 수 없는 링크예요');
       data = d;
-      document.title = `${d.student.name} · 나의 학습 페이지`;
-      render();
+      data.classes = (data.classes || []).filter(c => !c.archived);
+      document.title = `${d.student.name} · 학습 캘린더`;
+      build(); render();
     }).catch(() => notFound('잠시 연결이 원활하지 않아요'));
   })();
   </script>

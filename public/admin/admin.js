@@ -547,6 +547,17 @@
       </div></section>
       <section class="card"><div class="card-head"><h3>수강 일정</h3></div><div class="card-body">
         ${mine.length ? `<div class="list">${sortBy(mine, c => c.startDate || '').map(c => { const t = today(); const st = classEnded(c) ? ['', '종료'] : (c.startDate || '') > t ? ['amber', '개강 예정 ' + dday(c.startDate)] : ['green', '수강 중']; return `<a class="li" href="#/classes/${c.id}"><span class="pill ${st[0]}">${st[1]}</span><div class="main"><div class="t">${esc(c.name)}</div><div class="s">${classPeriod(c)} · ${classTime(c)}${c.room ? ' · ' + esc(c.room) : ''}</div>${c.note ? `<div class="s">${esc(c.note)}</div>` : ''}</div></a>`; }).join('')}</div>` : '<div class="faint">연결된 수업이 없어요. 왼쪽에서 체크하세요.</div>'}
+      </div></section>
+      <section class="card" style="grid-column:1/-1"><div class="card-head"><h3>집에서 학습 계획</h3><span class="faint">학생 화면 달력에 '집에서 학습'으로 표시돼요 (공휴일 제외 회차 자동 계산)</span></div><div class="card-body">
+        ${(s.plans || []).length ? `<div class="list">${s.plans.map((p, i) => `<div class="li"><span class="pill amber">집에서</span><div class="main"><div class="t">${esc(p.name)}</div><div class="s">${classPeriod(p)} · ${(p.days || []).map(d => DAYS[d]).join('·')} · ${U.sessions(p).length}회${p.note ? ' · ' + esc(p.note) : ''}</div></div><button class="btn ghost sm" data-act="plan-del" data-id="${s.id}" data-i="${i}">삭제</button></div>`).join('')}</div>` : '<div class="faint">아직 계획이 없어요. 예: 파이썬 용어집 정독(월·화), 인강 자바(월·수·금)</div>'}
+        <div class="form cols" id="plan-form" style="margin-top:12px;padding:14px;background:var(--surface-2);border-radius:12px">
+          ${field('할 일 이름', input('name', '', 'placeholder="예: IT 용어집 정독"'))}
+          ${field('메모 (선택)', input('note', '', 'placeholder="예: 하루 2쪽"'))}
+          ${field('요일', `<div class="chips">${[1, 2, 3, 4, 5, 6, 0].map(d => `<label class="check" style="margin-right:8px"><input type="checkbox" name="days" data-multi value="${d}">${DAYS[d]}</label>`).join('')}</div>`, 'full')}
+          ${field('시작일', input('startDate', today(), 'type="date"'))}
+          ${field('끝나는 날', input('endDate', addDays(today(), 28), 'type="date"'))}
+          <div class="full row" style="justify-content:flex-end"><button class="btn primary" data-act="plan-add" data-id="${s.id}">계획 추가</button></div>
+        </div>
       </div></section></div>`;
   }
 
@@ -1320,6 +1331,20 @@
       location.hash = '#/classes';
     },
     'class-link': el => linkStudents(Store.get('classes', el.dataset.id)),
+    'plan-add': async el => {
+      const v = vals(document.getElementById('plan-form'));
+      if (!v.name) return toast('할 일 이름을 넣어주세요');
+      if (!(v.days || []).length) return toast('요일을 하나 이상 골라주세요');
+      if (!v.startDate || !v.endDate || v.endDate < v.startDate) return toast('기간을 확인해주세요');
+      const s = Store.get('students', el.dataset.id);
+      s.plans = (s.plans || []).concat([{ id: Store.uid(), name: v.name, note: v.note, days: v.days.map(Number), startDate: v.startDate, endDate: v.endDate }]);
+      await Store.put('students', s); toast('학습 계획을 추가했어요'); render();
+    },
+    'plan-del': async el => {
+      const s = Store.get('students', el.dataset.id);
+      s.plans.splice(Number(el.dataset.i), 1);
+      await Store.put('students', s); render();
+    },
     'cohort-move': el => { const x = (ui._cohorts || [])[Number(el.dataset.i)]; if (x) moveCohort(x.from, x.to, x.studs); },
     'class-next': el => {
       const c = Store.get('classes', el.dataset.id), nx = nextCohort(c);
