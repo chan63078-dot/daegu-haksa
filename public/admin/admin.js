@@ -259,10 +259,10 @@
       const ln = lastNote(s.id);
       const r = rate(attOf(s.id));
       return `<tr class="click" data-act="go" data-href="#/students/${s.id}">
-        <td><div class="row" style="flex-wrap:nowrap"><span class="av">${initial(s.name)}</span><div><b>${esc(s.name)}</b><div class="faint">${esc(s.goal || '목표 미입력')}</div></div></div></td>
+        <td style="min-width:150px"><div class="row" style="flex-wrap:nowrap"><span class="av">${initial(s.name)}</span><div><b>${esc(s.name)}</b><div class="faint">${esc(s.goal || '목표 미입력')}</div></div></div></td>
         <td>${pill(statusOf(s.status))}</td>
         <td class="hide-m">${esc(s.category || '-')}<div class="faint">${esc(s.track || '')}</div></td>
-        <td>${esc(staffName(s.mentorId))}</td>
+        <td style="white-space:nowrap">${esc(staffName(s.mentorId))}</td>
         <td class="hide-m">${(s.classIds || []).map(id => classes.find(c => c.id === id)).filter(Boolean).map(c => `<span class="pill outline">${esc(c.name)}</span>`).join(' ') || '<span class="faint">없음</span>'}</td>
         <td class="hide-m">${ln ? fmt(ln.date) : '<span class="faint">없음</span>'}</td>
         <td class="num">${r == null ? '-' : r + '%'}</td></tr>`;
