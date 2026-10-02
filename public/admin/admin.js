@@ -9,7 +9,8 @@
     classArchived: false,
     examPast: false,
     leadTab: 'open',
-    reportMonths: 6
+    reportMonths: 6,
+    accounts: null       // 로그인 계정 목록 { email: {lastSignIn} } | 'loading' | { error }
   };
 
   // ---------- 도우미 ----------
@@ -25,7 +26,7 @@
   const ongoing = list => list.filter(s => ONGOING.includes(s.status));
   const initial = n => esc((n || '?').trim().slice(0, 1));
   const pill = st => `<span class="pill ${st.tone}">${esc(st.label)}</span>`;
-  const studentLink = s => `${ROOT}?t=${encodeURIComponent(s.token)}`;
+  const studentLink = s => `${ROOT}?t=${encodeURIComponent(s.token)}${Store.forceDemo ? '&demo' : ''}`;
   const sortBy = (arr, f) => arr.slice().sort((a, b) => (f(a) < f(b) ? -1 : f(a) > f(b) ? 1 : 0));
 
   function toast(msg) {
@@ -129,7 +130,7 @@
   ];
   function shell(active, body) {
     const m = me();
-    return `${Store.live ? '' : `<div class="demo-banner"><b>데모 모드</b> · 이 브라우저에만 저장돼요. 실제 운영은 설정 파일에 Supabase 정보를 넣으면 바뀝니다.</div>`}
+    return `${Store.live ? '' : `<div class="demo-banner"><b>${Store.forceDemo ? '연습용 데모 모드' : '데모 모드'}</b> · 이 브라우저에만 저장돼요. ${Store.forceDemo ? '실제 데이터에는 영향이 없어요.' : '실제 운영은 설정 파일에 Supabase 정보를 넣으면 바뀝니다.'}</div>`}
     <header class="topbar"><div class="topbar-in">
       <a class="brand" href="#/"><span class="brand-mark">대</span><span>학사관리<small>${esc(Store.config.ACADEMY_NAME || '')}</small></span></a>
       <nav class="nav">${NAV.map(([k, h, l]) => `<a href="${h}" class="${k === active ? 'on' : ''}">${l}</a>`).join('')}</nav>
@@ -809,7 +810,86 @@
   }
 
   // ---------- 설정 ----------
+  // ---------- 직원 로그인 계정 (원장·총괄) ----------
+  function loadAccounts(force) {
+    if (!isAdmin() || (ui.accounts && !force)) return;
+    ui.accounts = 'loading';
+    Store.staffAccount('status').then(r => {
+      ui.accounts = {};
+      (r.users || []).forEach(u => { ui.accounts[u.email] = u; });
+    }).catch(e => { ui.accounts = { error: e.message, code: e.code }; })
+      .then(() => { if ((location.hash || '').startsWith('#/settings')) render(); });
+  }
+  const accountReady = () => ui.accounts && typeof ui.accounts === 'object' && !ui.accounts.error;
+  const accountOf = p => (accountReady() ? ui.accounts[(p.email || '').toLowerCase()] || null : undefined);
+  function accountCell(p) {
+    if (!ui.accounts || ui.accounts === 'loading') return '<span class="faint">확인 중…</span>';
+    if (ui.accounts.error) return '<span class="faint">확인 불가</span>';
+    const a = accountOf(p);
+    if (!a) return p.active === false ? '<span class="faint">없음</span>' : '<span class="pill red">없음</span>';
+    return a.lastSignIn ? `<span class="pill green">있음</span> <span class="faint">${fmt(a.lastSignIn)} 접속</span>` : '<span class="pill amber">있음</span> <span class="faint">접속 전</span>';
+  }
+  function accountBox(p) {
+    if (!isAdmin()) return '';
+    const a = accountOf(p);
+    let body;
+    if (a === undefined) body = ui.accounts && ui.accounts.error
+      ? `<span class="faint">${esc(ui.accounts.error)}</span>`
+      : '<span class="faint">확인 중이에요. 잠시 뒤 다시 열어주세요.</span>';
+    else if (!a) body = '<span class="pill red">로그인 계정 없음</span> <button class="btn sm primary" data-acct="create">로그인 계정 만들기</button>';
+    else body = `${a.lastSignIn ? `<span class="pill green">있음</span> <span class="faint">${fmt(a.lastSignIn)} 접속</span>` : '<span class="pill amber">있음 · 접속 전</span>'}
+      <button class="btn sm" data-acct="reset">비밀번호 재설정</button>${p.id === me().id ? '' : '<button class="btn sm danger" data-acct="delete">계정 삭제</button>'}`;
+    return `<div class="field full"><label>로그인 계정</label><div class="row">${body}</div></div>`;
+  }
+  // 헷갈리는 글자(0/O, 1/l/I) 없는 임시 비밀번호 (예: Kmtrqb4827)
+  function genPassword() {
+    const r = n => crypto.getRandomValues(new Uint32Array(1))[0] % n;
+    const U = 'ABCDEFGHJKLMNPQRSTUVWXYZ', L = 'abcdefghjkmnpqrstuvwxyz', D = '23456789';
+    let s = U[r(U.length)];
+    for (let i = 0; i < 5; i++) s += L[r(L.length)];
+    for (let i = 0; i < 4; i++) s += D[r(D.length)];
+    return s;
+  }
+  const pwOk = pw => pw.length >= 10 && /[a-zA-Z]/.test(pw) && /\d/.test(pw);
+  const pwField = (name, label) => field(label, `<div class="row" style="flex-wrap:nowrap"><input class="in" name="${name}" autocomplete="off" spellcheck="false" placeholder="10자 이상, 영문+숫자"><button class="btn" type="button" data-gen="${name}">자동 생성</button></div>`, 'full');
+  function bindGen(root) {
+    root.querySelectorAll('[data-gen]').forEach(b => { b.onclick = e => { e.preventDefault(); e.stopPropagation(); root.querySelector(`[name="${b.dataset.gen}"]`).value = genPassword(); }; });
+  }
+  // 만든 비밀번호를 한 번 보여주고 로그인 안내와 함께 복사
+  function showPassword(p, pw, what) {
+    const text = [`[${Store.config.ACADEMY_NAME || '학사관리'} 학사관리]`, `주소: ${ROOT}admin/`, `아이디: ${p.email}`, `임시 비밀번호: ${pw}`,
+      '한/영 키가 영문인지 확인하고 입력하세요.', '로그인 후 오른쪽 위 내 이름 → 비밀번호 바꾸기에서 꼭 바꿔주세요.'].join('\n');
+    openModal(`${p.name}님 · ${what}`, `<p style="margin-top:0">비밀번호는 <b>지금만</b> 보여요. 복사해서 ${esc(p.name)}님께 직접 전달하세요.</p>
+      <div class="card card-pad" style="font-size:22px;font-weight:800;letter-spacing:.06em;text-align:center;font-family:ui-monospace,Consolas,monospace">${esc(pw)}</div>`, {
+      extra: '<button class="btn primary" data-copy-pw>로그인 안내 복사</button>',
+      onOpen: bg => { bg.querySelector('[data-copy-pw]').onclick = e => { e.stopPropagation(); copy(text).then(() => toast('로그인 안내를 복사했어요')); }; }
+    });
+  }
+  async function accountAction(p, action) {
+    if (action === 'delete') {
+      if (!(await confirmBox(`${p.name}님의 로그인 계정을 삭제할까요? 직원 명단은 그대로 두고 로그인만 막아요.`, '계정 삭제'))) return;
+      await Store.staffAccount('delete', { email: p.email });
+      toast('로그인 계정을 삭제했어요');
+      loadAccounts(true); render();
+      return;
+    }
+    const label = action === 'create' ? '로그인 계정 만들기' : '비밀번호 재설정';
+    const bg = openModal(`${p.name}님 ${label}`, `<div class="form">${field('아이디', `<input class="in" value="${esc(p.email)}" readonly>`)}${pwField('pw', action === 'create' ? '임시 비밀번호' : '새 임시 비밀번호')}</div>`, {
+      okText: label,
+      onOk: async root => {
+        const pw = vals(root).pw;
+        if (!pwOk(pw)) { toast('10자 이상, 영문과 숫자를 섞어주세요'); return false; }
+        await Store.staffAccount(action, { email: p.email, password: pw });
+        loadAccounts(true);
+        setTimeout(() => showPassword(p, pw, action === 'create' ? '로그인 계정을 만들었어요' : '비밀번호를 바꿨어요'), 0);
+      }
+    });
+    bindGen(bg);
+    bg.querySelector('[name=pw]').value = genPassword();
+  }
+
   function pageSettings() {
+    loadAccounts();
     const m = me();
     const teams = Store.all('teams');
     const people = Store.all('staff');
@@ -825,10 +905,11 @@
         ${sortBy(teams, t => (t.division || '') + t.name).map(t => `<div class="li"><div class="main"><div class="t">${t.division ? `<span class="faint">${esc(t.division)}</span> ` : ''}${esc(t.name)}</div><div class="s">${people.filter(p => p.teamId === t.id && p.active !== false).map(p => esc(p.name)).join(', ') || '팀원 없음'}</div></div>${isAdmin() ? `<button class="btn ghost sm" data-act="team-edit" data-id="${t.id}">수정</button><button class="btn ghost sm danger" data-act="team-del" data-id="${t.id}">삭제</button>` : ''}</div>`).join('') || '<div class="faint">팀이 없어요</div>'}
       </div></div></section>
       <section class="card span2" style="grid-column:1/-1"><div class="card-head"><h3>직원</h3>${isAdmin() ? '<button class="btn sm primary" data-act="staff-new">+ 직원 등록</button>' : ''}</div><div class="card-body tbl-wrap">
-        <table class="tbl"><thead><tr><th>이름</th><th>이메일</th><th>권한</th><th>팀</th><th class="num">담당 학생</th><th></th></tr></thead><tbody>
-        ${people.map(p => `<tr style="${p.active === false ? 'opacity:.5' : ''}"><td><b>${esc(p.name)}</b>${p.active === false ? ' <span class="pill">비활성</span>' : ''}</td><td>${esc(p.email)}</td><td>${esc(roleLabel(p))}<div class="faint">${esc(ROLES[p.role])}</div></td><td>${esc(p.teamId ? teamFull(p.teamId) : '-')}</td><td class="num">${ongoing(students().filter(s => s.mentorId === p.id)).length}</td><td style="white-space:nowrap">${isAdmin() ? `<button class="btn ghost sm" data-act="staff-guide" data-id="${p.id}">안내 문구</button><button class="btn ghost sm" data-act="staff-edit" data-id="${p.id}">수정</button>` : ''}</td></tr>`).join('')}
+        <table class="tbl"><thead><tr><th>이름</th><th>이메일</th><th>권한</th><th>팀</th>${isAdmin() ? '<th>로그인 계정</th>' : ''}<th class="num">담당 학생</th><th></th></tr></thead><tbody>
+        ${people.map(p => `<tr style="${p.active === false ? 'opacity:.5' : ''}"><td><b>${esc(p.name)}</b>${p.active === false ? ' <span class="pill">비활성</span>' : ''}</td><td>${esc(p.email)}</td><td>${esc(roleLabel(p))}<div class="faint">${esc(ROLES[p.role])}</div></td><td>${esc(p.teamId ? teamFull(p.teamId) : '-')}</td>${isAdmin() ? `<td style="white-space:nowrap">${accountCell(p)}</td>` : ''}<td class="num">${ongoing(students().filter(s => s.mentorId === p.id)).length}</td><td style="white-space:nowrap">${isAdmin() ? `<button class="btn ghost sm" data-act="staff-guide" data-id="${p.id}">안내 문구</button><button class="btn ghost sm" data-act="staff-edit" data-id="${p.id}">수정</button>` : ''}</td></tr>`).join('')}
         </tbody></table>
-        ${Store.live && isAdmin() ? '<p class="faint">직원을 등록한 뒤, Supabase 관리 화면(Authentication → Users)에서 같은 이메일로 로그인 계정을 만들어 주세요.</p>' : ''}
+        ${isAdmin() && ui.accounts && ui.accounts.error ? `<p class="pill amber" style="height:auto;padding:6px 10px;margin-top:10px">${esc(ui.accounts.error)} ${ui.accounts.code === 'not-installed' ? 'README의 "직원 계정 관리 기능 설치"를 따라 설치하면 여기서 계정을 만들 수 있어요.' : ''}</p>` : ''}
+        ${isAdmin() ? '<p class="faint">직원 줄의 "수정"을 누르면 로그인 계정 만들기 · 비밀번호 재설정 · 계정 삭제를 할 수 있어요.</p>' : ''}
       </div></section>
       <section class="card"><div class="card-head"><h3>백업</h3></div><div class="card-body">
         <p class="muted" style="margin-top:0">볼 수 있는 모든 데이터를 파일 하나로 받아요. 주 1회 받아 공용 드라이브에 보관하세요.</p>
@@ -849,10 +930,15 @@
       ${field('직함 (화면 표시용)', input('title', p.title, 'placeholder="예: 경력멘토, 신인멘토, 부장"'))}
       ${field('팀', `<select class="in" name="teamId">${opt('', '팀 없음', p.teamId)}${Store.all('teams').map(t => opt(t.id, teamFull(t.id), p.teamId)).join('')}</select>`, 'full')}
       ${isNew ? '' : `<label class="check full"><input type="checkbox" name="inactive" ${p.active === false ? 'checked' : ''}>퇴사·비활성 (로그인 불가, 기록은 남음)</label>`}
+      ${isNew ? pwField('pw', '임시 비밀번호 (넣으면 로그인 계정도 바로 만들어요)') : accountBox(p)}
     </div><p class="faint">멘토는 담당 학생만, 팀장은 자기 팀, 부장은 자기 사업부 전체, 원장·총괄은 모두 볼 수 있어요. 부장은 소속 팀으로 사업부가 정해져요.</p>
-    ${Store.live ? `<p class="faint">${isNew ? '등록한 뒤 Supabase 관리 화면(Authentication → Users → Add user)에서 같은 이메일로 로그인 계정을 만들어 주세요.' : '이메일을 바꾸면 Supabase 관리 화면의 로그인 계정 이메일도 같이 바꿔야 로그인돼요.'}</p>` : ''}`, {
+    ${isNew ? '' : '<p class="faint">이메일을 바꾸면 예전 이메일의 로그인 계정은 그대로 남아요. 저장한 뒤 다시 열어 새 이메일로 로그인 계정을 만들어 주세요.</p>'}`, {
       okText: isNew ? '등록' : '저장',
       extra: isNew || p.id === me().id ? '' : `<button class="btn danger" data-act="staff-del" data-id="${p.id}">삭제</button>`,
+      onOpen: bg => {
+        bindGen(bg);
+        bg.querySelectorAll('[data-acct]').forEach(b => { b.onclick = e => { e.preventDefault(); e.stopPropagation(); bg.remove(); accountAction(p, b.dataset.acct).catch(err => toast(err.message)); }; });
+      },
       onOk: async root => {
         const v = vals(root);
         v.email = (v.email || '').toLowerCase();
@@ -863,7 +949,12 @@
         const admins = Store.all('staff').filter(x => x.role === 'admin' && x.active !== false && x.id !== p.id);
         if (p.role === 'admin' && (v.role !== 'admin' || v.inactive) && !admins.length) { toast('원장·총괄이 최소 한 명은 있어야 해요'); return false; }
         const obj = Object.assign({}, p, { name: v.name, email: v.email.toLowerCase(), role: v.role, title: v.title, teamId: v.teamId || null, active: !v.inactive });
+        if (isNew && v.pw && !pwOk(v.pw)) { toast('임시 비밀번호는 10자 이상, 영문과 숫자를 섞어주세요'); return false; }
         await Store.put('staff', obj);
+        if (isNew && v.pw) {
+          try { await Store.staffAccount('create', { email: obj.email, password: v.pw }); loadAccounts(true); setTimeout(() => showPassword(obj, v.pw, '로그인 계정을 만들었어요'), 0); }
+          catch (err) { toast('직원은 등록했지만 로그인 계정은 못 만들었어요: ' + err.message); }
+        }
         await Store.log(isNew ? 'staff-create' : 'staff-update', obj.id, `직원 ${isNew ? '등록' : '수정'}: ${obj.name} (${ROLES[obj.role]}${obj.active ? '' : ', 비활성'})`);
         // 담당 학생의 팀 정보 갱신
         for (const s of Store.all('students').filter(s => s.mentorId === obj.id)) await Store.put('students', s);
@@ -1135,7 +1226,9 @@
       if (!(await confirmBox(`${p.name}님을 직원 명단에서 삭제할까요? 이 사람은 더 이상 앱에 들어올 수 없어요.`, '삭제'))) return;
       await Store.del('staff', p.id);
       await Store.log('staff-delete', p.id, `직원 삭제: ${p.name} (${p.email})`);
-      toast(Store.live ? '삭제했어요. Supabase 로그인 계정도 지워주세요.' : '삭제했어요');
+      try { await Store.staffAccount('delete', { email: p.email }); toast('직원과 로그인 계정을 삭제했어요'); }
+      catch (err) { toast('직원은 삭제했지만 로그인 계정은 못 지웠어요: ' + err.message); }
+      loadAccounts(true);
       render();
     },
     backup: () => U.download(`학사관리_백업_${today()}.json`, JSON.stringify(Store.exportAll(), null, 2), 'application/json'),

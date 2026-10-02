@@ -7,7 +7,9 @@
   const STUDENT_SCOPED = ['attendance', 'notes', 'meetings', 'tasks'];
   const LS_KEY = 'daegu-haksa-v2';  // 데모 데이터 구조가 바뀌면 숫자를 올림
   const LS_ME = 'daegu-haksa-me';
-  const live = !!(C.SUPABASE_URL && C.SUPABASE_ANON_KEY);
+  // 주소에 ?demo 를 붙이면 실제 DB 대신 연습용 데모 모드 (교육·테스트용)
+  const forceDemo = /[?&]demo\b/.test(location.search);
+  const live = !!(C.SUPABASE_URL && C.SUPABASE_ANON_KEY) && !forceDemo;
 
   let sb = null;
   let me = null;
@@ -82,6 +84,7 @@
 
   const Store = {
     live,
+    forceDemo,
     config: C,
     uid,
     newToken,
