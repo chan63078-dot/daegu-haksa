@@ -139,6 +139,16 @@
   }
 
   // ---------- 로그인 ----------
+  // 로그인 실패 원인을 구분해서 알려주기
+  function loginError(err) {
+    const code = (err && (err.code || err.message)) || '';
+    if (code === 'not-staff') return '로그인 계정은 맞지만 직원 명단에 없는 이메일이에요. 원장·총괄에게 직원 등록을 요청하세요.';
+    if (code === 'email_not_confirmed' || /not confirmed/i.test(code)) return '이메일 인증이 안 된 계정이에요. Supabase에서 계정을 지우고 Auto Confirm User를 체크해 다시 만들어 주세요.';
+    if (code === 'invalid_credentials' || /invalid login/i.test(code)) return '이메일 또는 비밀번호가 맞지 않아요. 계정이 아직 없을 수도 있어요.';
+    if (code === 'over_request_rate_limit' || /rate limit/i.test(code)) return '로그인 시도가 너무 많아요. 몇 분 뒤 다시 해주세요.';
+    if (/fetch|network/i.test(code)) return '서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.';
+    return '로그인하지 못했어요: ' + code;
+  }
   function renderLogin(msg) {
     const C = Store.config;
     const body = Store.live
@@ -160,7 +170,7 @@
       e.preventDefault();
       const v = vals(f);
       try { await Store.login(v.email, v.password); render(); }
-      catch (err) { renderLogin(err.message === 'not-staff' ? '관리자 명단에 없는 계정이에요. 원장님께 등록을 요청하세요.' : '이메일 또는 비밀번호가 맞지 않아요.'); }
+      catch (err) { console.warn('login', err); renderLogin(loginError(err)); }
     };
   }
 
