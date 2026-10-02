@@ -9,7 +9,7 @@
     { key: 'dropped', label: '중도 이탈', tone: 'red' }
   ];
   const ONGOING = ['active', 'gov'];
-  const CATEGORIES = ['10대', '대학 1·2학년', '대학 3·4학년', '대학 휴학', '취준 20대', '취준 30대 이상', '재직자'];
+  const CATEGORIES = ['10대', '대학 1·2학년', '대학 3·4학년', '대학 휴학', '취준 20대', '취준 30대 이상', '재직자', '시니어'];
   const TRACKS = ['전공', '비전공'];
   const ROLES = { admin: '원장·총괄', head: '부장(사업부)', lead: '팀장', mentor: '멘토' };
   // 화면에 보일 직함: 직함(경력멘토 등)이 있으면 그것, 없으면 권한 이름

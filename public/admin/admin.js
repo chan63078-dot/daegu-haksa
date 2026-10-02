@@ -350,7 +350,7 @@
       ${field('상태', `<select class="in" name="status">${STATUS.map(x => opt(x.key, x.label, s.status || 'active')).join('')}</select>`)}
       ${field('한 줄 목표', input('goal', s.goal, 'placeholder="예: 정보처리기사 → 공기업 전산직"'), 'full')}
       ${field('수강 수업', classes.length
-        ? `<div style="max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 12px">${sortBy(classes, c => (c.startDate || '') + c.name).map(c => `<label class="li check" style="padding:8px 0"><input type="checkbox" name="classIds" data-multi value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}><div class="main"><div class="t" style="font-weight:600">${esc(c.name)}</div><div class="s">${classPeriod(c)} · ${classTime(c)} · ${esc(c.room || '')}</div></div></label>`).join('')}</div>`
+        ? `<input class="in" type="search" placeholder="수업 검색 (예: 파이썬, ALEPH, 주말)" data-class-q style="margin-bottom:8px"><div style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 12px">${sortBy(classes, c => (c.startDate || '') + c.name).map(c => `<label class="li check" data-class-item="${esc([c.name, c.room, c.instructor, classTime(c)].join(' ').toLowerCase().replace(/\s/g, ''))}" style="padding:8px 0"><input type="checkbox" name="classIds" data-multi value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}><div class="main"><div class="t" style="font-weight:600">${esc(c.name)}</div><div class="s">${classPeriod(c)} · ${classTime(c)} · ${esc(c.room || '')}</div></div></label>`).join('')}</div>`
         : `<div class="faint">아직 등록된 수업이 없어요. ${isLead() ? '<a href="#/classes" data-close-modal>수업</a>에서 수업을 추가하거나 시간표 파일로 한꺼번에 등록한 뒤 고를 수 있어요.' : '팀장님께 수업 등록을 요청하세요.'}</div>`, 'full')}
     </div>`;
   }
@@ -1469,6 +1469,13 @@
   };
   document.addEventListener('input', onSearch);
   document.addEventListener('compositionend', onSearch);
+  // 학생 등록·정보 폼의 수업 검색: 다시 그리지 않고 목록만 걸러서 체크 상태 유지
+  document.addEventListener('input', e => {
+    if (!e.target.hasAttribute || !e.target.hasAttribute('data-class-q')) return;
+    const q = e.target.value.toLowerCase().replace(/\s/g, '');
+    const box = e.target.nextElementSibling;
+    if (box) box.querySelectorAll('[data-class-item]').forEach(el => { el.style.display = !q || el.dataset.classItem.includes(q) || el.querySelector('input').checked ? '' : 'none'; });
+  });
   // 진행 보드 끌어 놓기
   document.addEventListener('dragstart', e => { const c = e.target.closest('[data-drag]'); if (c) e.dataTransfer.setData('text/plain', c.dataset.drag); });
   document.addEventListener('dragover', e => { const col = e.target.closest('[data-drop]'); if (col) { e.preventDefault(); col.classList.add('drop'); } });

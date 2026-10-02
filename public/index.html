@@ -105,7 +105,7 @@
     let data, byDate, items;
 
     function notFound(msg) {
-      app.innerHTML = `<div class="card card-pad" style="margin:40px auto;max-width:420px;text-align:center"><div class="brand-mark" style="margin:0 auto 12px">대</div><h2 style="font-size:18px">${esc(msg)}</h2><p class="faint">담당 멘토에게 새 링크를 요청하세요.${C.CONTACT ? `<br>문의 ${esc(C.CONTACT)}` : ''}</p></div>`;
+      app.innerHTML = `<div class="card card-pad" style="margin:40px auto;max-width:420px;text-align:center"><div class="brand-mark" style="margin:0 auto 12px">대</div><h2 style="font-size:18px">${esc(msg)}</h2><p class="faint">담당 멘토에게 새 링크를 요청하세요.</p></div>`;
     }
 
     // 날짜별 일정 만들기: 수업 회차, 집에서 학습, 시험(접수·시험·발표), 면담, 할 일 마감
@@ -235,7 +235,7 @@
           <p class="faint" style="margin:8px 2px 0">수업 날짜는 공휴일과 휴강을 빼고 계산했어요. 휴강·보강은 바뀔 수 있으니 멘토 안내를 우선으로 확인하세요.</p></div>
         ${side()}
       </div>
-      <p class="faint" style="text-align:center;margin-top:24px">이 링크는 ${esc(s.name)}님 전용이에요. 다른 사람과 공유하지 마세요.${C.CONTACT ? `<br>문의 ${esc(C.CONTACT)}` : ''}</p>`;
+      <p class="faint" style="text-align:center;margin-top:24px">이 링크는 ${esc(s.name)}님 전용이에요. 다른 사람과 공유하지 마세요.</p>`;
     }
 
     app.addEventListener('click', e => {
