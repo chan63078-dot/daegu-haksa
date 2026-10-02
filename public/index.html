@@ -64,7 +64,7 @@
       const done = road.filter(r => r.done).length;
       const att = data.attendance;
       const r = att.length ? Math.round(att.filter(a => a.state !== 'absent').length / att.length * 100) : null;
-      const exams = data.exams.filter(e => e.examDate >= t).sort((a, b) => a.examDate < b.examDate ? -1 : 1);
+      const exams = data.exams.filter(e => (e.examEnd || e.examDate) >= t).sort((a, b) => a.examDate < b.examDate ? -1 : 1);
       const tasks = data.tasks.slice().sort((a, b) => (a.done - b.done) || ((a.due || '9') < (b.due || '9') ? -1 : 1));
       const certs = (s.certs || []);
 
@@ -91,7 +91,7 @@
       </div></section>
 
       ${exams.length ? `<section class="card sec"><div class="card-head"><h3>시험 일정</h3></div><div class="card-body">
-        ${exams.map(e => `<div class="exam"><div class="dd">${dday(e.examDate)}</div><div class="grow"><b>${esc(e.name)}</b><div class="faint">시험 ${fmt(e.examDate)}${e.regEnd >= t ? ` · 접수 ${fmt(e.regStart)}~${fmt(e.regEnd)}` : ''}${e.resultDate ? ` · 발표 ${fmt(e.resultDate)}` : ''}</div></div></div>`).join('')}
+        ${exams.map(e => `<div class="exam"><div class="dd">${e.examDate <= t ? '시험중' : dday(e.examDate)}</div><div class="grow"><b>${esc(e.name)}</b><div class="faint">시험 ${fmt(e.examDate)}${e.examEnd && e.examEnd !== e.examDate ? '~' + fmt(e.examEnd) : ''}${e.regEnd >= t ? ` · 접수 ${fmt(e.regStart)}~${fmt(e.regEnd)}` : ''}${e.resultDate ? ` · 발표 ${fmt(e.resultDate)}` : ''}</div></div></div>`).join('')}
       </div></section>` : ''}
 
       <section class="card sec"><div class="card-head"><h3>할 일</h3><span class="faint">끝내면 체크하세요</span></div><div class="card-body">

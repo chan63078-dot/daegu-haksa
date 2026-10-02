@@ -128,7 +128,7 @@ begin
     'meetings', coalesce((select jsonb_agg(jsonb_build_object('date', m.data->'date', 'time', m.data->'time', 'topic', m.data->'topic'))
       from items m where m.collection = 'meetings' and m.student_id = s.id and not coalesce((m.data->>'done')::boolean, false)), '[]'::jsonb),
     'exams', coalesce((select jsonb_agg(jsonb_build_object('id', e.id, 'name', e.data->'name', 'regStart', e.data->'regStart', 'regEnd', e.data->'regEnd',
-        'examDate', e.data->'examDate', 'resultDate', e.data->'resultDate'))
+        'examDate', e.data->'examDate', 'examEnd', e.data->'examEnd', 'resultDate', e.data->'resultDate', 'memo', e.data->'memo'))
       from items e where e.collection = 'exams' and coalesce(e.data->'studentIds', '[]'::jsonb) ? s.id), '[]'::jsonb)
   );
 end $$;

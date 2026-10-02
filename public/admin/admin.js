@@ -32,6 +32,8 @@
   const initial = n => esc((n || '?').trim().slice(0, 1));
   const pill = st => `<span class="pill ${st.tone}">${esc(st.label)}</span>`;
   const studentLink = s => `${ROOT}?t=${encodeURIComponent(s.token)}${Store.forceDemo ? '&demo' : ''}`;
+  const examLast = e => e.examEnd || e.examDate || '';
+  const examWhen = e => e.examEnd && e.examEnd !== e.examDate ? `${fmt(e.examDate)}~${fmt(e.examEnd)}` : fmt(e.examDate);
   const classEnded = c => !!c.archived || (!!c.endDate && c.endDate < today());
   const classPeriod = c => (c.startDate ? `${fmt(c.startDate)}~${fmt(c.endDate)}` : '기간 미정');
   const classTime = c => `${(c.days || []).map(d => DAYS[d]).join('·') || '요일 미정'} ${esc(c.start || '')}~${esc(c.end || '')}`;
@@ -119,8 +121,8 @@
       if (late) out.push({ tone: 'amber', s, title: '후속 상담 지연', sub: `예정일 ${fmt(late.nextDate)}` });
       const overdue = Store.all('tasks').filter(k => k.studentId === s.id && !k.done && k.due && k.due < t);
       if (overdue.length) out.push({ tone: 'blue', s, title: '할 일 지연', sub: `${overdue[0].title}${overdue.length > 1 ? ` 외 ${overdue.length - 1}건` : ''}` });
-      exams.filter(e => (e.studentIds || []).includes(s.id) && e.examDate >= t && diffDays(e.examDate, t) <= 14)
-        .forEach(e => out.push({ tone: 'blue', s, title: `시험 임박 ${dday(e.examDate)}`, sub: e.name }));
+      exams.filter(e => (e.studentIds || []).includes(s.id) && examLast(e) >= t && diffDays(e.examDate, t) <= 14)
+        .forEach(e => out.push({ tone: 'blue', s, title: e.examDate <= t ? '시험 기간' : `시험 임박 ${dday(e.examDate)}`, sub: `${e.name} · ${examWhen(e)}` }));
     });
     const order = { red: 0, amber: 1, blue: 2 };
     return out.sort((a, b) => order[a.tone] - order[b.tone]);
@@ -536,7 +538,7 @@
 
   function stuCerts(s) {
     const t = today();
-    const exams = sortBy(Store.all('exams').filter(e => e.examDate >= t || (e.studentIds || []).includes(s.id)), e => e.examDate);
+    const exams = sortBy(Store.all('exams').filter(e => examLast(e) >= t || (e.studentIds || []).includes(s.id)), e => e.examDate);
     const tasks = sortBy(Store.all('tasks').filter(k => k.studentId === s.id), k => (k.done ? '1' : '0') + (k.due || '9'));
     const certTone = st => st === '합격' ? 'green' : st === '불합격' ? 'red' : 'amber';
     return `<div class="grid g2" style="align-items:start">
@@ -812,7 +814,7 @@
   function pageExams() {
     const t = today();
     const all = sortBy(Store.all('exams'), e => e.examDate);
-    const list = all.filter(e => ui.examPast ? e.examDate < t : e.examDate >= t);
+    const list = all.filter(e => ui.examPast ? examLast(e) < t : examLast(e) >= t);
     const visibleIds = new Set(students().map(s => s.id));
     const step = (label, a, b) => `<div class="li"><span class="faint" style="width:64px">${label}</span><div class="main">${a ? fmt(a) : '-'}${b ? ' ~ ' + fmt(b) : ''}</div>${a && a >= t ? `<span class="pill outline">${dday(a)}</span>` : ''}</div>`;
     return `<div class="page-head"><div><h1>시험 일정</h1><p>자격증 시험과 응시 학생을 함께 관리해요</p></div>
@@ -821,15 +823,17 @@
     <div class="grid g3">${list.map(e => {
       const names = (e.studentIds || []).filter(id => visibleIds.has(id)).map(id => Store.get('students', id)).filter(Boolean);
       const regOpen = e.regStart <= t && t <= e.regEnd;
-      return `<section class="card card-pad"><div class="row" style="justify-content:space-between"><span class="pill ${e.examDate >= t ? 'blue' : ''}">${dday(e.examDate)}</span>${regOpen ? '<span class="pill amber">접수 중</span>' : ''}</div>
+      const during = e.examDate <= t && t <= examLast(e);
+      return `<section class="card card-pad"><div class="row" style="justify-content:space-between"><span class="pill ${examLast(e) >= t ? 'blue' : ''}">${during ? '시험 기간' : dday(e.examDate)}</span>${regOpen ? '<span class="pill amber">접수 중</span>' : e.regStart > t ? `<span class="pill outline">접수 ${dday(e.regStart)}</span>` : ''}</div>
         <h3 style="margin:8px 0 6px;font-size:16px">${esc(e.name)}</h3>
-        <div class="list">${step('접수', e.regStart, e.regEnd)}${step('시험', e.examDate)}${step('발표', e.resultDate)}</div>
+        <div class="list">${step('접수', e.regStart, e.regEnd)}${step('시험', e.examDate, e.examEnd && e.examEnd !== e.examDate ? e.examEnd : '')}${step('발표', e.resultDate)}</div>
+        ${e.memo ? `<div class="faint" style="margin-top:6px;white-space:pre-wrap">${esc(e.memo)}</div>` : ''}
         <div class="faint" style="margin-top:8px">응시 학생 ${names.length}명</div>
         <div class="chips" style="margin-top:6px">${names.map(s => `<a class="pill outline" href="#/students/${s.id}/certs" style="text-decoration:none">${esc(s.name)}</a>`).join('')}</div>
         ${isLead() ? `<div style="margin-top:12px"><button class="btn sm" data-act="exam-edit" data-id="${e.id}">수정</button></div>` : ''}
       </section>`;
     }).join('') || '<div class="card empty">시험이 없어요</div>'}</div>
-    <p class="faint" style="margin-top:16px">처음 들어 있는 시험 일정은 예시예요. Q-Net, 데이터자격검정 사이트에서 실제 일정을 확인해 고쳐주세요.</p>`;
+    <p class="faint" style="margin-top:16px">시험 기간이 여러 날이면 끝나는 날까지 '다가오는 시험'에 남아 있어요. 일정이 바뀌면 카드의 수정에서 고쳐주세요.</p>`;
   }
   function editExam(e) {
     const isNew = !e.id;
@@ -838,8 +842,10 @@
       ${field('시험 이름', input('name', e.name, 'placeholder="예: 정보처리기사 실기 4회"'), 'full')}
       ${field('접수 시작', input('regStart', e.regStart, 'type="date"'))}
       ${field('접수 마감', input('regEnd', e.regEnd, 'type="date"'))}
-      ${field('시험일', input('examDate', e.examDate, 'type="date" required'))}
-      ${field('발표일', input('resultDate', e.resultDate, 'type="date"'))}
+      ${field('시험일 (시작)', input('examDate', e.examDate, 'type="date" required'))}
+      ${field('시험 끝나는 날 (기간이면)', input('examEnd', e.examEnd, 'type="date"'))}
+      ${field('합격 발표일', input('resultDate', e.resultDate, 'type="date"'))}
+      ${field('메모', input('memo', e.memo, 'placeholder="예: 추가접수 09.28, 2차 발표 12.18"'))}
       ${field('응시 학생', `<div class="chips">${cands.map(s => `<label class="check" style="margin-right:10px"><input type="checkbox" name="studentIds" data-multi value="${s.id}" ${(e.studentIds || []).includes(s.id) ? 'checked' : ''}>${esc(s.name)}</label>`).join('') || '<span class="faint">진행 중 학생이 없어요</span>'}</div>`, 'full')}
     </div>`, {
       okText: isNew ? '추가' : '저장',
@@ -847,6 +853,7 @@
       onOk: async root => {
         const v = vals(root);
         if (!v.name || !v.examDate) { toast('시험 이름과 시험일을 넣어주세요'); return false; }
+        if (v.examEnd && v.examEnd < v.examDate) { toast('시험 끝나는 날이 시작일보다 빨라요'); return false; }
         const keep = (e.studentIds || []).filter(id => !cands.some(s => s.id === id));
         await Store.put('exams', Object.assign({}, e, v, { studentIds: keep.concat(v.studentIds || []) }));
         toast('저장했어요');

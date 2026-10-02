@@ -194,7 +194,7 @@
         attendance: db.attendance.filter(a => a.studentId === s.id).map(({ classId, date, state }) => ({ classId, date, state })),
         tasks: db.tasks.filter(t => t.studentId === s.id && t.shared !== false),
         meetings: db.meetings.filter(m => m.studentId === s.id && !m.done).map(({ date, time, topic }) => ({ date, time, topic })),
-        exams: db.exams.filter(e => (e.studentIds || []).includes(s.id)).map(({ id, name, regStart, regEnd, examDate, resultDate }) => ({ id, name, regStart, regEnd, examDate, resultDate }))
+        exams: db.exams.filter(e => (e.studentIds || []).includes(s.id)).map(({ id, name, regStart, regEnd, examDate, examEnd, resultDate, memo }) => ({ id, name, regStart, regEnd, examDate, examEnd, resultDate, memo }))
       };
     },
     async studentSetTask(token, taskId, done) {
