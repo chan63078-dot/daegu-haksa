@@ -102,7 +102,7 @@
   function nextMeeting(sid) { const t = today(); return sortBy(Store.all('meetings').filter(m => m.studentId === sid && !m.done && m.date >= t), m => m.date + (m.time || ''))[0] || null; }
   function lastNote(sid) { return sortBy(Store.all('notes').filter(n => n.studentId === sid), n => n.date).pop() || null; }
 
-  // 같은 과정의 다음 기수: 이름 끝 번호 +1 (번호가 없으면 같은 이름), 같은 강의실 우선
+  // 같은 과정의 다음 기수: 이름 끝 번호 +1 (번호가 없으면 같은 이름), 종강 후 14일 안 개강, 같은 강의실 우선
   function seriesOf(c) {
     const base = String(c.name || '').replace(/\s·\s.*$/, '').trim();
     const m = base.match(/^(.*?)(\d+)(\/주말)?$/);
@@ -110,7 +110,9 @@
   }
   function nextCohort(c, classes) {
     const sc = seriesOf(c);
-    const cands = (classes || Store.all('classes')).filter(x => x.id !== c.id && (x.startDate || '') > (c.startDate || '') && !classEnded(x))
+    // 종강 후 14일 안에 개강하는 반만 (몇 달 뒤 같은 이름으로 다시 여는 반은 다음 기수가 아님)
+    const limit = c.endDate ? addDays(c.endDate, 14) : '9999';
+    const cands = (classes || Store.all('classes')).filter(x => x.id !== c.id && (x.startDate || '') > (c.startDate || '') && (x.startDate || '') <= limit && !classEnded(x))
       .filter(x => { const sx = seriesOf(x); return sx.key === sc.key && (sc.n == null ? sx.n == null : sx.n === sc.n + 1); });
     return sortBy(cands, x => (x.room === c.room ? '0' : '1') + (x.startDate || ''))[0] || null;
   }
