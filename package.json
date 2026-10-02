@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/schema.test.mjs",
+    "test": "node tests/timetable.test.mjs && node tests/schema.test.mjs",
     "dev": "python -m http.server 8765 --directory public"
   },
   "devDependencies": {

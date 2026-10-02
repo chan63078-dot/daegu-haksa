@@ -27,6 +27,8 @@
   const initial = n => esc((n || '?').trim().slice(0, 1));
   const pill = st => `<span class="pill ${st.tone}">${esc(st.label)}</span>`;
   const studentLink = s => `${ROOT}?t=${encodeURIComponent(s.token)}${Store.forceDemo ? '&demo' : ''}`;
+  const classEnded = c => !!c.archived || (!!c.endDate && c.endDate < today());
+  const classTime = c => `${(c.days || []).map(d => DAYS[d]).join('·') || '요일 미정'} ${esc(c.start || '')}~${esc(c.end || '')}`;
   const sortBy = (arr, f) => arr.slice().sort((a, b) => (f(a) < f(b) ? -1 : f(a) > f(b) ? 1 : 0));
 
   function toast(msg) {
@@ -42,7 +44,7 @@
     opts = opts || {};
     const bg = document.createElement('div');
     bg.className = 'modal-bg';
-    bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">
+    bg.innerHTML = `<div class="modal${opts.wide ? ' wide' : ''}" role="dialog" aria-modal="true">
       <div class="modal-head"><h3>${esc(title)}</h3><button class="btn ghost sm" data-x>닫기</button></div>
       <div class="modal-body">${body}</div>
       <div class="modal-foot">${opts.extra || ''}<span class="grow"></span><button class="btn" data-x>취소</button>${opts.onOk ? `<button class="btn ${opts.danger ? 'accent' : 'primary'}" data-ok>${esc(opts.okText || '저장')}</button>` : ''}</div>
@@ -284,7 +286,7 @@
 
   function studentForm(s) {
     const canMentor = isLead();
-    const classes = Store.all('classes').filter(c => !c.archived);
+    const classes = Store.all('classes').filter(c => !classEnded(c) || (s.classIds || []).includes(c.id));
     return `<div class="form cols">
       ${field('이름', input('name', s.name, 'required'))}
       ${field('연락처', input('phone', s.phone, 'inputmode="tel" placeholder="010-0000-0000"'))}
@@ -293,7 +295,9 @@
       ${field('담당', `<select class="in" name="mentorId" ${canMentor ? '' : 'disabled'}>${staff().map(x => opt(x.id, `${x.name} (${roleLabel(x)} · ${teamName(x.teamId)})`, s.mentorId || me().id)).join('')}</select>`)}
       ${field('상태', `<select class="in" name="status">${STATUS.map(x => opt(x.key, x.label, s.status || 'active')).join('')}</select>`)}
       ${field('한 줄 목표', input('goal', s.goal, 'placeholder="예: 정보처리기사 → 공기업 전산직"'), 'full')}
-      ${classes.length ? field('수강 수업', `<div class="chips">${classes.map(c => `<label class="check" style="margin-right:10px"><input type="checkbox" name="classIds" data-multi value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}>${esc(c.name)}</label>`).join('')}</div>`, 'full') : ''}
+      ${field('수강 수업', classes.length
+        ? `<div style="max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 12px">${sortBy(classes, c => c.name).map(c => `<label class="li check" style="padding:8px 0"><input type="checkbox" name="classIds" data-multi value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}><div class="main"><div class="t" style="font-weight:600">${esc(c.name)}</div><div class="s">${classTime(c)} · ${esc(c.room || '')}</div></div></label>`).join('')}</div>`
+        : `<div class="faint">아직 등록된 수업이 없어요. ${isLead() ? '<a href="#/classes" data-close-modal>수업·출결</a>에서 수업을 추가하거나 시간표 파일로 한꺼번에 등록한 뒤 고를 수 있어요.' : '팀장님께 수업 등록을 요청하세요.'}</div>`, 'full')}
     </div>`;
   }
   function newStudent(prefill, after) {
@@ -384,6 +388,7 @@
       <div class="row"><button class="btn" data-act="import-template">양식 파일 받기</button><label class="btn primary">CSV 파일 고르기<input type="file" accept=".csv,text/csv" id="import-file" hidden></label></div>
       <div id="import-preview" style="margin-top:14px"></div>`, {
       okText: '등록',
+      wide: true,
       onOk: async () => {
         if (!plan || !plan.items) { toast('먼저 CSV 파일을 골라주세요'); return false; }
         const go = plan.items.filter(x => !x.skip);
@@ -483,8 +488,9 @@
     const mine = classes.filter(c => (s.classIds || []).includes(c.id));
     const recent = sortBy(attOf(s.id), a => a.date).reverse().slice(0, 12);
     return `<div class="grid g2" style="align-items:start">
-      <section class="card"><div class="card-head"><h3>수강 수업</h3></div><div class="card-body">
-        <div class="list">${classes.filter(c => !c.archived || (s.classIds || []).includes(c.id)).map(c => `<label class="li check"><input type="checkbox" data-change="stu-class" data-id="${s.id}" value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}><div class="main"><div class="t">${esc(c.name)}${c.archived ? ' <span class="pill">종료</span>' : ''}</div><div class="s">${(c.days || []).map(d => DAYS[d]).join('·')} ${esc(c.start)}~${esc(c.end)}</div></div></label>`).join('')}</div>
+      <section class="card"><div class="card-head"><h3>수강 수업</h3>${isLead() ? `<button class="btn sm" data-act="class-new" data-for="${s.id}">+ 새 수업 만들기</button>` : ''}</div><div class="card-body">
+        ${classes.some(c => !classEnded(c)) ? '' : `<div class="faint" style="margin-bottom:8px">진행 중인 수업이 없어요. ${isLead() ? '오른쪽 위 버튼이나 수업·출결의 "시간표 파일로 등록"으로 먼저 수업을 만들어 주세요.' : '팀장님께 수업 등록을 요청하세요.'}</div>`}
+        <div class="list">${sortBy(classes.filter(c => !classEnded(c) || (s.classIds || []).includes(c.id)), c => ((s.classIds || []).includes(c.id) ? '0' : '1') + c.name).map(c => `<label class="li check"><input type="checkbox" data-change="stu-class" data-id="${s.id}" value="${c.id}" ${(s.classIds || []).includes(c.id) ? 'checked' : ''}><div class="main"><div class="t">${esc(c.name)}${classEnded(c) ? ' <span class="pill">종료</span>' : ''}</div><div class="s">${classTime(c)}${c.room ? ' · ' + esc(c.room) : ''}${c.instructor ? ' · ' + esc(c.instructor) : ''}</div></div></label>`).join('')}</div>
       </div></section>
       <section class="card"><div class="card-head"><h3>출결 요약</h3></div><div class="card-body">
         ${mine.length ? mine.map(c => {
@@ -584,21 +590,21 @@
   function pageClasses() {
     const t = today();
     const all = Store.all('classes');
-    const list = sortBy(all.filter(c => !!c.archived === ui.classArchived), c => (U.classOn(c, t) ? '0' : '1') + c.name);
+    const list = sortBy(all.filter(c => classEnded(c) === ui.classArchived), c => (U.classOn(c, t) ? '0' : (c.startDate || '') <= t ? '1' : '2') + c.name);
     const studs = students();
     return `<div class="page-head"><div><h1>수업 · 출결</h1><p>반별 학생과 출결을 보고, 출결표를 엑셀로 받을 수 있어요</p></div>
-      <div class="row">${isLead() ? '<button class="btn primary" data-act="class-new">+ 수업 추가</button>' : ''}</div></div>
-    <div class="chips" style="margin-bottom:16px"><button class="chip ${!ui.classArchived ? 'on' : ''}" data-act="class-arch" data-v="0">진행 중<b>${all.filter(c => !c.archived).length}</b></button><button class="chip ${ui.classArchived ? 'on' : ''}" data-act="class-arch" data-v="1">종료<b>${all.filter(c => c.archived).length}</b></button></div>
+      <div class="row">${isLead() ? '<button class="btn" data-act="class-import">시간표 파일로 등록</button><button class="btn primary" data-act="class-new">+ 수업 추가</button>' : ''}</div></div>
+    <div class="chips" style="margin-bottom:16px"><button class="chip ${!ui.classArchived ? 'on' : ''}" data-act="class-arch" data-v="0">진행·예정<b>${all.filter(c => !classEnded(c)).length}</b></button><button class="chip ${ui.classArchived ? 'on' : ''}" data-act="class-arch" data-v="1">종료<b>${all.filter(classEnded).length}</b></button></div>
     <div class="grid g3">${list.map(c => {
       const n = studs.filter(s => (s.classIds || []).includes(c.id) && ONGOING.includes(s.status)).length;
       const on = U.classOn(c, t);
       return `<a class="card class-card ${esc(c.color || 'gray')}" href="#/classes/${c.id}">
-        <div class="row">${on ? '<span class="pill accent" style="background:var(--accent);color:#fff">오늘 수업</span>' : ''}${c.gov ? '<span class="pill blue">국비</span>' : ''}${c.archived ? '<span class="pill">종료</span>' : ''}</div>
+        <div class="row">${on ? '<span class="pill accent" style="background:var(--accent);color:#fff">오늘 수업</span>' : ''}${c.gov ? '<span class="pill blue">국비</span>' : ''}${classEnded(c) ? '<span class="pill">종료</span>' : (c.startDate || '') > t ? '<span class="pill amber">개강 예정</span>' : ''}</div>
         <h3>${esc(c.name)}</h3>
-        <div class="faint">${(c.days || []).map(d => DAYS[d]).join('·')} · ${esc(c.start)}~${esc(c.end)} · ${esc(c.room || '')}</div>
+        <div class="faint">${classTime(c)} · ${esc(c.room || '')}${c.instructor ? ' · ' + esc(c.instructor) + ' 강사' : ''}</div>
         <div class="faint">${fmt(c.startDate)} ~ ${fmt(c.endDate)}</div>
         <div style="margin-top:8px;font-weight:700">학생 ${n}명</div></a>`;
-    }).join('') || '<div class="card empty">수업이 없어요</div>'}</div>`;
+    }).join('') || `<div class="card empty" style="grid-column:1/-1">${ui.classArchived ? '끝난 수업이 없어요' : `아직 수업이 없어요.${isLead() ? '<br>매달 받는 "IT대구 ○월 평일/주말 강의 시간표" 파일을 <b>시간표 파일로 등록</b>에 올리면 한꺼번에 들어가요.' : ''}`}</div>`}</div>`;
   }
 
   function sessionDates(c, upTo) {
@@ -639,12 +645,79 @@
       ${field('끝 시간', input('end', c.end || '21:00', 'type="time"'))}
       ${field('개강일', input('startDate', c.startDate || today(), 'type="date"'))}
       ${field('종강일', input('endDate', c.endDate || addDays(today(), 60), 'type="date"'))}
-      ${field('강의실', input('room', c.room, 'placeholder="예: 501호"'))}
+      ${field('강의실', input('room', c.room, 'placeholder="예: A[10층]"'))}
+      ${field('강사', input('instructor', c.instructor))}
+      ${field('비고', input('note', c.note, 'placeholder="예: 휴강 8/17, 격주 요일"'), 'full')}
       ${field('색상', `<select class="in" name="color">${colors.map(([k, l]) => opt(k, l, c.color || 'green')).join('')}</select>`)}
       <label class="check"><input type="checkbox" name="gov" ${c.gov ? 'checked' : ''}>국비 과정</label>
-      <label class="check"><input type="checkbox" name="archived" ${c.archived ? 'checked' : ''}>종료된 수업 (목록에서 숨김)</label>
+      <label class="check"><input type="checkbox" name="archived" ${c.archived ? 'checked' : ''}>종료 처리 (종강일 전이라도 목록에서 숨김)</label>
     </div>`;
   }
+  // ---------- 시간표 파일로 수업 한꺼번에 등록 ----------
+  function classColor(c) {
+    if (c.gov) return 'green';
+    if (c.days.length && c.days.every(d => d === 0 || d === 6)) return 'violet';
+    if (+String(c.start).split(':')[0] >= 18) return 'blue';
+    return 'amber';
+  }
+  function openClassImport() {
+    let items = [];
+    const t = today();
+    const existing = Store.all('classes');
+    const bg = openModal('시간표 파일로 수업 등록', `
+      <p class="muted" style="margin-top:0">학원 시스템에서 받은 <b>"IT대구 ○월 평일/주말 강의 시간표"</b> CSV를 그대로 올리세요. 평일·주말 두 파일을 같이 골라도 돼요.</p>
+      <div class="row"><label class="btn primary">파일 고르기<input type="file" accept=".csv,text/csv" multiple id="tt-file" hidden></label><button class="btn" data-tt-template>직접 쓸 양식 받기</button></div>
+      <div id="tt-preview" style="margin-top:14px"></div>`, {
+      okText: '선택한 수업 등록',
+      wide: true,
+      onOk: async root => {
+        const pick = items.filter((x, i) => root.querySelector(`[data-tt="${i}"]`)?.checked);
+        if (!pick.length) { toast('등록할 수업을 골라주세요'); return false; }
+        for (const c of pick) {
+          await Store.put('classes', { name: c.name, days: c.days, start: c.start, end: c.end, startDate: c.startDate, endDate: c.endDate, room: c.room, instructor: c.instructor, note: [c.note, c.endGuessed ? '끝 시간 추정' : ''].filter(Boolean).join(' / '), gov: c.gov, color: classColor(c) });
+        }
+        await Store.log('class-import', '', `시간표 파일로 수업 ${pick.length}개 등록`);
+        toast(`수업 ${pick.length}개를 등록했어요`);
+        render();
+      }
+    });
+    bg.querySelector('[data-tt-template]').onclick = e => {
+      e.preventDefault(); e.stopPropagation();
+      U.download('수업_등록_양식.csv', U.csv([['수업 이름', '요일', '시작', '끝', '개강일', '종강일', '강의실', '강사'], ['파이썬 기초', '월/수', '19:00', '22:00', today(), addDays(today(), 30), 'A[10층]', '홍길동'], ['정보처리기사 실기/주말', '토/일', '09:30', '13:30', today(), addDays(today(), 28), 'E[9층]', '']]));
+    };
+    bg.querySelector('#tt-file').addEventListener('change', async e => {
+      const box = bg.querySelector('#tt-preview');
+      items = [];
+      const errors = [];
+      for (const f of e.target.files) {
+        try {
+          const r = Timetable.parseTimetable(U.parseCSV(await U.readTextFile(f)));
+          if (r.error) errors.push(`${f.name}: ${r.error}`); else items.push(...r.courses);
+        } catch (err) { errors.push(`${f.name}: 읽지 못했어요`); }
+      }
+      // 같은 파일을 두 번 고른 경우 등 중복 제거
+      const seen = new Set();
+      items = items.filter(c => { const k = c.name + '|' + c.startDate; if (seen.has(k)) return false; seen.add(k); return true; });
+      items.forEach(c => {
+        c.dup = existing.some(x => x.name === c.name && (x.startDate || '') === (c.startDate || ''));
+        c.ended = !!c.endDate && c.endDate < t;
+        c.lack = !c.startDate || !c.endDate || !c.days.length || !c.start;
+        c.on = !c.dup && !c.ended && !c.lack;
+      });
+      items.sort((a, b) => (a.on === b.on ? 0 : a.on ? -1 : 1) || (a.startDate || '').localeCompare(b.startDate || ''));
+      const why = c => c.dup ? '<span class="pill">이미 있음</span>' : c.ended ? '<span class="pill">종강</span>' : c.lack ? '<span class="pill amber">정보 부족</span>' : (c.startDate > t ? '<span class="pill amber">개강 예정</span>' : '<span class="pill green">진행 중</span>');
+      box.innerHTML = `${errors.map(x => `<p class="pill red" style="height:auto;padding:6px 10px">${esc(x)}</p>`).join('')}
+        <p style="margin:0 0 8px"><b>${items.filter(c => c.on).length}개 선택</b> <span class="muted">/ 파일 속 수업 ${items.length}개 · 종강·이미 있는 수업은 빼 뒀어요</span></p>
+        <div class="tbl-wrap" style="max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:10px"><table class="tbl"><thead><tr><th></th><th>수업</th><th>요일 · 시간</th><th>기간</th><th>상태</th></tr></thead><tbody>
+        ${items.map((c, i) => `<tr><td><input type="checkbox" data-tt="${i}" ${c.on ? 'checked' : ''} ${c.dup ? 'disabled' : ''} style="width:18px;height:18px;accent-color:var(--brand)"></td>
+          <td style="min-width:220px"><b>${esc(c.name)}</b><div class="faint">${esc(c.room || '')}${c.instructor ? ' · ' + esc(c.instructor) : ''}${c.gov ? ' · 국비' : ''}</div></td>
+          <td style="white-space:nowrap">${esc(c.daysText || '-')}<div class="faint">${esc(c.start || '')}~${esc(c.end || '')}${c.endGuessed ? ' (끝 추정)' : ''}</div></td>
+          <td style="white-space:nowrap">${c.startDate ? fmt(c.startDate) : '-'} ~ ${c.endDate ? fmt(c.endDate) : '-'}</td><td>${why(c)}</td></tr>`).join('')}
+        </tbody></table></div>
+        <p class="faint">파일에는 끝 시간이 없어서 시작 시간으로 추정했어요(오전 국비 18:00, 저녁 22:00, 주말 4시간). 등록 후 수업 정보에서 고칠 수 있어요.</p>`;
+    });
+  }
+
   function editClass(c) {
     const isNew = !c.id;
     openModal(isNew ? '수업 추가' : '수업 정보 수정', classForm(c), {
@@ -655,6 +728,11 @@
         if (!v.name) { toast('수업 이름을 넣어주세요'); return false; }
         const obj = Object.assign({}, c, v, { days: (v.days || []).map(Number) });
         await Store.put('classes', obj);
+        if (isNew && ui.classFor) {
+          const st = Store.get('students', ui.classFor);
+          if (st) { st.classIds = Array.from(new Set((st.classIds || []).concat(obj.id))); await Store.put('students', st); }
+          ui.classFor = null;
+        }
         await Store.log(isNew ? 'class-create' : 'class-update', obj.id, obj.name);
         toast(isNew ? '수업을 추가했어요' : '저장했어요');
         render();
@@ -1151,7 +1229,12 @@
       toast('삭제했어요'); location.hash = '#/students';
     },
     'class-arch': el => { ui.classArchived = el.dataset.v === '1'; render(); },
-    'class-new': () => editClass({}),
+    'class-new': el => {
+      document.querySelectorAll('.modal-bg').forEach(m => m.remove());
+      if (el && el.dataset.for) ui.classFor = el.dataset.for; else ui.classFor = null;
+      editClass({});
+    },
+    'class-import': () => openClassImport(),
     'class-edit': el => editClass(Store.get('classes', el.dataset.id)),
     'class-del': async el => {
       document.querySelectorAll('.modal-bg').forEach(m => m.remove());
@@ -1270,6 +1353,7 @@
   };
 
   document.addEventListener('click', e => {
+    if (e.target.closest('[data-close-modal]')) document.querySelectorAll('.modal-bg').forEach(m => m.remove());
     const el = e.target.closest('[data-act]');
     if (!el || !A[el.dataset.act]) return;
     if (el.tagName === 'A' && el.dataset.act !== 'go') return;
