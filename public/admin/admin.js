@@ -1464,9 +1464,10 @@
   });
   let qTimer;
   const SEARCH = { 'stu-q': v => { ui.stu.q = v; }, 'exam-q': v => { ui.examQ = v; } };
-  document.addEventListener('input', e => {
-    const key = e.target.dataset.input;
-    if (!SEARCH[key]) return;
+  // 한글은 조합 중에도 input 이벤트가 생김 → 조합이 끝난 뒤(compositionend)에만 검색 (중간에 다시 그리면 글자가 사라짐)
+  const onSearch = e => {
+    const key = e.target.dataset && e.target.dataset.input;
+    if (!SEARCH[key] || e.isComposing) return;
     clearTimeout(qTimer);
     qTimer = setTimeout(() => {
       SEARCH[key](e.target.value);
@@ -1474,8 +1475,10 @@
       render();
       const inp = document.querySelector(`[data-input="${key}"]`);
       if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos); } catch (err) {} }
-    }, 200);
-  });
+    }, 250);
+  };
+  document.addEventListener('input', onSearch);
+  document.addEventListener('compositionend', onSearch);
   // 진행 보드 끌어 놓기
   document.addEventListener('dragstart', e => { const c = e.target.closest('[data-drag]'); if (c) e.dataTransfer.setData('text/plain', c.dataset.drag); });
   document.addEventListener('dragover', e => { const col = e.target.closest('[data-drop]'); if (col) { e.preventDefault(); col.classList.add('drop'); } });
