@@ -341,7 +341,7 @@
         ${items.map(s => `<a class="kcard" draggable="true" data-drag="${s.id}" href="#/students/${s.id}"><div class="t">${esc(s.name)}</div><div class="s">${esc(s.goal || '목표 미입력')}</div><div class="s">${esc(staffName(s.mentorId))} · ${esc(s.category || '')}</div></a>`).join('') || '<div class="faint" style="padding:8px">비어 있어요</div>'}</div>`;
     }).join('')}</div><p class="faint">카드를 다른 칸으로 끌어 놓으면 상태가 바뀌고 이력이 남아요.</p>`;
 
-    return `<div class="page-head"><div><h1>학생</h1><p>${list.length}명 표시 · 볼 수 있는 학생 ${all.length}명</p></div>
+    return `<div class="page-head"><div><h1>학생</h1><p id="stu-count">${list.length}명 표시 · 볼 수 있는 학생 ${all.length}명</p></div>
       <div class="row"><div class="seg"><button class="${f.view === 'list' ? 'on present' : ''}" data-act="stu-view" data-v="list">목록</button><button class="${f.view === 'board' ? 'on present' : ''}" data-act="stu-view" data-v="board">진행 보드</button></div>
       <button class="btn" data-act="stu-csv">엑셀 받기</button><button class="btn" data-act="import-open">엑셀로 등록</button><button class="btn primary" data-act="student-new">+ 학생 추가</button></div></div>
     <div class="chips" style="margin-bottom:12px">${chips}</div>
@@ -350,7 +350,7 @@
       <select class="in" style="max-width:180px" data-change="stu-cat">${opt('', '카테고리 전체', f.cat)}${CATEGORIES.map(c => opt(c, c, f.cat)).join('')}</select>
       ${me().role !== 'mentor' ? `<select class="in" style="max-width:180px" data-change="stu-mentor">${opt('', '담당 전체', f.mentor)}${staff().map(s => opt(s.id, s.name, f.mentor)).join('')}</select>` : ''}
     </div>
-    ${f.view === 'board' ? board : `<div class="card tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>이름</th><th>상태</th><th class="hide-m">카테고리</th><th>담당</th><th class="hide-m">수업</th><th class="hide-m">최근 상담</th><th>다음 면담</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">조건에 맞는 학생이 없어요</div>`}</div>`}`;
+    <div id="stu-results">${f.view === 'board' ? board : `<div class="card tbl-wrap">${list.length ? `<table class="tbl"><thead><tr><th>이름</th><th>상태</th><th class="hide-m">카테고리</th><th>담당</th><th class="hide-m">수업</th><th class="hide-m">최근 상담</th><th>다음 면담</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">조건에 맞는 학생이 없어요</div>`}</div>`}</div>`;
   }
 
   function studentForm(s) {
@@ -922,11 +922,12 @@
     return `<div class="page-head"><div><h1>시험 일정</h1><p>자격증 시험과 응시 학생을 함께 관리해요</p></div>
       <div class="row">${isLead() ? '<button class="btn primary" data-act="exam-new">+ 시험 추가</button>' : ''}</div></div>
     <div class="row" style="margin-bottom:12px">
-      <div class="chips"><button class="chip ${!ui.examPast ? 'on' : ''}" data-act="exam-past" data-v="0">다가오는 시험<b>${all.filter(e => examLast(e) >= t && hit(e)).length}</b></button><button class="chip ${ui.examPast ? 'on' : ''}" data-act="exam-past" data-v="1">지난 시험<b>${all.filter(e => examLast(e) < t && hit(e)).length}</b></button></div>
+      <div class="chips" id="exam-tabs"><button class="chip ${!ui.examPast ? 'on' : ''}" data-act="exam-past" data-v="0">다가오는 시험<b>${all.filter(e => examLast(e) >= t && hit(e)).length}</b></button><button class="chip ${ui.examPast ? 'on' : ''}" data-act="exam-past" data-v="1">지난 시험<b>${all.filter(e => examLast(e) < t && hit(e)).length}</b></button></div>
       <input class="in" type="search" style="max-width:280px" placeholder="자격증 검색 (예: 네트워크관리사)" value="${esc(ui.examQ)}" data-input="exam-q">
     </div>
-    ${families.length > 1 ? `<div class="chips" style="margin-bottom:16px">${families.map(f => `<button class="chip ${q && norm(f) === q ? 'on' : ''}" data-act="exam-family" data-v="${esc(f)}">${esc(f)}</button>`).join('')}${q ? '<button class="chip" data-act="exam-family" data-v="">전체 보기</button>' : ''}</div>` : ''}
-    <div class="grid g3">${list.map(e => {
+    <div id="exam-fams">${families.length > 1 ? `<div class="chips" style="margin-bottom:16px">${families.map(f => `<button class="chip ${q && norm(f) === q ? 'on' : ''}" data-act="exam-family" data-v="${esc(f)}">${esc(f)}</button>`).join('')}${q ? '<button class="chip" data-act="exam-family" data-v="">전체 보기</button>' : ''}</div>` : ''}
+    </div>
+    <div class="grid g3" id="exam-results">${list.map(e => {
       const names = (e.studentIds || []).filter(id => visibleIds.has(id)).map(id => Store.get('students', id)).filter(Boolean);
       const regOpen = e.regStart <= t && t <= e.regEnd;
       const during = e.examDate <= t && t <= examLast(e);
@@ -1539,23 +1540,19 @@
     if (!el || !CH[el.dataset.change]) return;
     Promise.resolve(CH[el.dataset.change](el, e)).catch(err => { console.error(err); toast('처리하지 못했어요: ' + (err.message || err)); });
   });
-  let qTimer;
-  const SEARCH = { 'stu-q': v => { ui.stu.q = v; }, 'exam-q': v => { ui.examQ = v; } };
-  // 한글은 조합 중에도 input 이벤트가 생김 → 조합이 끝난 뒤(compositionend)에만 검색 (중간에 다시 그리면 글자가 사라짐)
-  const onSearch = e => {
-    const key = e.target.dataset && e.target.dataset.input;
-    if (!SEARCH[key] || e.isComposing) return;
-    clearTimeout(qTimer);
-    qTimer = setTimeout(() => {
-      SEARCH[key](e.target.value);
-      const pos = e.target.selectionStart;
-      render();
-      const inp = document.querySelector(`[data-input="${key}"]`);
-      if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos); } catch (err) {} }
-    }, 250);
+  // 검색창: 화면 전체를 다시 그리지 않고 결과 영역만 바꿈 → 한글 조합(ㅎ→하→한)이 끊기지 않음
+  const SEARCH = {
+    'stu-q': { set: v => { ui.stu.q = v; }, page: () => pageStudents(), ids: ['stu-count', 'stu-results'] },
+    'exam-q': { set: v => { ui.examQ = v; }, page: () => pageExams(), ids: ['exam-tabs', 'exam-fams', 'exam-results'] }
   };
-  document.addEventListener('input', onSearch);
-  document.addEventListener('compositionend', onSearch);
+  document.addEventListener('input', e => {
+    const p = SEARCH[e.target.dataset && e.target.dataset.input];
+    if (!p) return;
+    p.set(e.target.value);
+    const tmp = document.createElement('div');
+    tmp.innerHTML = p.page();
+    p.ids.forEach(id => { const cur = document.getElementById(id), next = tmp.querySelector('#' + id); if (cur && next) cur.innerHTML = next.innerHTML; });
+  });
   // 학생 등록·정보 폼의 수업 검색: 다시 그리지 않고 목록만 걸러서 체크 상태 유지
   document.addEventListener('input', e => {
     if (!e.target.hasAttribute || !e.target.hasAttribute('data-class-q')) return;
