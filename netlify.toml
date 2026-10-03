@@ -1,0 +1,10 @@
+# Netlify 배포 설정
+# - public/ 폴더를 그대로 올림
+# - 배포 전에 권한 검증 테스트를 돌리고, 실패하면 배포하지 않음
+# - JS·CSS 주소의 __BUILD__ 를 커밋 번호로 바꿔 브라우저 캐시 문제 방지
+[build]
+  publish = "public"
+  command = "npm test && grep -rl '__BUILD__' public | xargs sed -i \"s/__BUILD__/${COMMIT_REF:0:8}/g\""
+
+[build.environment]
+  NODE_VERSION = "22"
