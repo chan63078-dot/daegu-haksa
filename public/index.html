@@ -116,7 +116,7 @@
       data.classes.forEach(c => {
         const ss = sessions(c);
         items.push({ kind: 'class', c, ss });
-        ss.forEach((d, i) => add(d, { kind: 'class', title: c.name, n: i + 1, N: ss.length, time: `${c.start || ''}~${c.end || ''}`, place: c.room }));
+        ss.forEach((d, i) => add(d, { kind: 'class', title: c.name, n: i + 1, N: ss.length, time: `${c.start || ''}~${c.end || ''}`, place: c.room, rec: (c.recordings || {})[d] }));
       });
       (data.student.plans || []).forEach(p => {
         const ss = sessions(p);
@@ -166,7 +166,7 @@
         const shown = list.slice(0, 3);
         cells.push(`<div class="day ${d.slice(0, 7) !== ui.month ? 'out' : ''} ${d === t ? 'today' : ''} ${d === ui.sel ? 'sel' : ''}" data-d="${d}">
           <div class="n ${dw === 0 || hol ? 'sun' : dw === 6 ? 'sat' : ''}"><b>${Number(d.slice(8))}</b>${hol ? `<span class="hol">${esc(hol)}</span>` : ''}</div>
-          ${shown.map(e => `<div class="ev ${e.kind} ${e.done ? 'done' : ''} ${e.late ? 'late' : ''}" title="${esc(e.title)}${e.N ? ` (${e.n}/${e.N}회)` : ''}"><span>${esc(short(e.title))}</span>${e.N ? `<small>${e.n}/${e.N}</small>` : ''}</div>`).join('')}
+          ${shown.map(e => `<div class="ev ${e.kind} ${e.done ? 'done' : ''} ${e.late ? 'late' : ''}" title="${esc(e.title)}${e.N ? ` (${e.n}/${e.N}회)` : ''}${e.rec && e.rec.url ? ' · 녹화본 있음' : ''}"><span>${e.rec && e.rec.url ? '▶ ' : ''}${esc(short(e.title))}</span>${e.N ? `<small>${e.n}/${e.N}</small>` : ''}</div>`).join('')}
           ${list.length > 3 ? `<div class="more">+${list.length - 3}</div>` : ''}
         </div>`);
       }
@@ -180,7 +180,9 @@
       return `<div class="card card-pad listview">${rows || '<div class="empty">이 달에는 일정이 없어요</div>'}</div>`;
     }
     const KIND = { class: '학원 수업', plan: '집에서 학습', exam: '시험', meet: '면담', task: '할 일' };
-    const ev = e => `<div style="padding:4px 0;${e.done ? 'text-decoration:line-through;opacity:.6' : ''}"><span class="tag ${e.kind}">${KIND[e.kind]}</span><b style="font-size:14px">${esc(e.title)}</b>${e.N ? ` <span class="faint">${e.n}/${e.N}회</span>` : ''}${e.time || e.place ? `<div class="faint" style="margin-left:2px">${esc([e.time, e.place].filter(Boolean).join(' · '))}</div>` : ''}</div>`;
+    const ev = e => `<div style="padding:4px 0;${e.done ? 'text-decoration:line-through;opacity:.6' : ''}"><span class="tag ${e.kind}">${KIND[e.kind]}</span><b style="font-size:14px">${esc(e.title)}</b>${e.N ? ` <span class="faint">${e.n}/${e.N}회</span>` : ''}${e.time || e.place ? `<div class="faint" style="margin-left:2px">${esc([e.time, e.place].filter(Boolean).join(' · '))}</div>` : ''}${recLink(e)}</div>`;
+    // 녹화본: https 링크만, 새 창으로
+    const recLink = e => e.rec && /^https?:\/\//i.test(e.rec.url || '') ? `<div style="margin:6px 0 2px"><a class="btn sm primary" href="${esc(e.rec.url)}" target="_blank" rel="noopener noreferrer">▶ 녹화본 보기</a>${e.rec.note ? ` <span class="faint">${esc(e.rec.note)}</span>` : ''}</div>` : '';
 
     function side() {
       const list = (byDate[ui.sel] || []);

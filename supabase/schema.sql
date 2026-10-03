@@ -122,7 +122,7 @@ begin
       'classIds', coalesce(s.data->'classIds', '[]'::jsonb), 'plans', coalesce(s.data->'plans', '[]'::jsonb)),
     'classes', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'name', c.data->'name', 'days', c.data->'days', 'start', c.data->'start', 'end', c.data->'end',
         'startDate', c.data->'startDate', 'endDate', c.data->'endDate', 'room', c.data->'room', 'archived', c.data->'archived',
-        'note', c.data->'note', 'instructor', c.data->'instructor'))
+        'note', c.data->'note', 'instructor', c.data->'instructor', 'recordings', c.data->'recordings'))
       from items c where c.collection = 'classes' and coalesce(s.data->'classIds', '[]'::jsonb) ? c.id), '[]'::jsonb),
     'attendance', coalesce((select jsonb_agg(jsonb_build_object('classId', a.data->'classId', 'date', a.data->'date', 'state', a.data->'state'))
       from items a where a.collection = 'attendance' and a.student_id = s.id), '[]'::jsonb),

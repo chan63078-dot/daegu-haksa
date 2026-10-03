@@ -759,7 +759,24 @@
         ${roster.map(s => { const ln = lastNote(s.id), nm = nextMeeting(s.id); return `<tr class="click" data-act="go" data-href="#/students/${s.id}"><td><b>${esc(s.name)}</b></td><td>${pill(statusOf(s.status))}</td><td style="white-space:nowrap">${esc(staffName(s.mentorId))}</td><td class="hide-m">${ln ? fmt(ln.date) : '<span class="faint">없음</span>'}</td><td>${nm ? fmt(nm.date) : '<span class="faint">-</span>'}</td></tr>`; }).join('')}
         </tbody></table>` : '<div class="empty">아직 연결된 학생이 없어요. "학생 연결"을 눌러 고르세요.</div>'}
       </div></section>
-    </div>`;
+    </div>
+    ${recordingsCard(c)}`;
+  }
+  // 회차별 줌 녹화본: 날짜마다 링크·메모를 넣으면 학생 캘린더 그 날짜에 '녹화본 보기'
+  function recordingsCard(c) {
+    const ss = U.sessions(c);
+    const rec = c.recordings || {};
+    const t = today();
+    const edit = isLead();
+    const filled = ss.filter(d => rec[d] && rec[d].url).length;
+    if (!ss.length) return `<section class="card card-pad" style="margin-top:16px"><b>회차별 녹화본</b><p class="faint">수업 요일과 기간이 있어야 회차가 만들어져요. 수업 정보를 먼저 채워주세요.</p></section>`;
+    return `<section class="card" style="margin-top:16px"><div class="card-head"><h3>회차별 녹화본 <span class="faint" style="font-weight:600">${filled}/${ss.length}</span></h3><span class="faint">링크를 넣고 저장하면 학생 캘린더의 그 날짜에 '녹화본 보기'가 생겨요${edit ? '' : ' · 입력은 팀장 이상'}</span></div>
+      <div class="card-body" id="rec-form"><div id="rec-scroll" style="position:relative;max-height:440px;overflow:auto;border:1px solid var(--line-2);border-radius:10px"><table class="tbl"><thead style="position:sticky;top:0;background:var(--surface);z-index:1"><tr><th style="width:70px">회차</th><th style="width:110px">날짜</th><th>녹화본 링크</th><th style="width:220px">메모 (예: 암호)</th></tr></thead><tbody>
+      ${ss.map((d, i) => { const r = rec[d] || {}; return `<tr data-rec-day="${d}" style="${d === t ? 'background:var(--brand-soft)' : d > t ? 'opacity:.65' : ''}"><td>${i + 1}/${ss.length}</td><td style="white-space:nowrap">${fmt(d)}${d === t ? ' <span class="pill green">오늘</span>' : ''}</td>
+        <td><input class="in" name="url-${d}" value="${esc(r.url || '')}" placeholder="https://zoom.us/rec/..." ${edit ? '' : 'disabled'} style="height:34px"></td>
+        <td><input class="in" name="note-${d}" value="${esc(r.note || '')}" ${edit ? '' : 'disabled'} style="height:34px"></td></tr>`; }).join('')}
+      </tbody></table></div>
+      ${edit ? `<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn primary" data-act="rec-save" data-id="${c.id}">녹화본 저장</button></div>` : ''}</div></section>`;
   }
   // 수업에 학생 여러 명 한꺼번에 연결
   function linkStudents(c) {
@@ -1193,6 +1210,9 @@
     app.innerHTML = shell(active, html);
     window.scrollTo(0, same ? y : 0);
     render._last = location.hash;
+    // 녹화본 표: 오늘 또는 가장 최근 지난 회차가 보이게
+    const box = document.getElementById('rec-scroll');
+    if (box && !same) { const t = today(); const rows = [...box.querySelectorAll('[data-rec-day]')]; const row = rows.filter(r => r.dataset.recDay <= t).pop(); if (row) box.scrollTop = Math.max(0, row.offsetTop - 120); }
     const title = (NAV.find(n => n[0] === active) || [])[2];
     document.title = `${title ? title + ' · ' : ''}학사관리`;
   }
@@ -1379,6 +1399,25 @@
       location.hash = '#/classes';
     },
     'class-link': el => linkStudents(Store.get('classes', el.dataset.id)),
+    'rec-save': async el => {
+      const c = Store.get('classes', el.dataset.id);
+      const v = vals(document.getElementById('rec-form'));
+      const rec = {};
+      const bad = [];
+      U.sessions(c).forEach(d => {
+        const url = (v['url-' + d] || '').trim(), note = (v['note-' + d] || '').trim();
+        if (!url && !note) return;
+        if (url && !/^https?:\/\/\S+$/i.test(url)) { bad.push(fmt(d)); return; }
+        rec[d] = { url, note };
+      });
+      if (bad.length) return toast(`링크는 https:// 로 시작해야 해요: ${bad.join(', ')}`);
+      const before = Object.keys(c.recordings || {}).filter(d => (c.recordings[d] || {}).url).length;
+      c.recordings = rec;
+      await Store.put('classes', c);
+      const now = Object.values(rec).filter(r => r.url).length;
+      await Store.log('recording', c.id, `녹화본 저장: ${c.name} (${before}→${now}개)`);
+      toast(`녹화본 ${now}개를 저장했어요`); render();
+    },
     'plan-add': async el => {
       const v = vals(document.getElementById('plan-form'));
       if (!v.name) return toast('할 일 이름을 넣어주세요');
