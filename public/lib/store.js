@@ -181,6 +181,8 @@
       const c = db.classes.find(r => r.id === classId);
       if (live) {
         const { error } = await sb.rpc('class_set_recordings', { p_class: classId, p_rec: rec });
+        // DB 함수가 아직 설치 전이면(설치 스크립트 재실행 전) 예전 방식으로 저장 — 팀장 이상만 됨
+        if (error && error.code === 'PGRST202' && c) return Store.put('classes', { ...c, recordings: rec });
         if (error) throw error;
       }
       if (c) { c.recordings = rec; c.updatedAt = new Date().toISOString(); }
