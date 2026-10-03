@@ -18,7 +18,8 @@ const reply = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 const fail = (status: number, code: string, message: string) => reply(status, { error: code, message });
 
-const strongEnough = (pw: string) => typeof pw === 'string' && pw.length >= 10 && /[a-zA-Z]/.test(pw) && /\d/.test(pw);
+// 앱 자체 규칙 없이 Supabase 기본 최소 길이(6자)만 확인
+const strongEnough = (pw: string) => typeof pw === 'string' && pw.length >= 6;
 
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -82,7 +83,7 @@ Deno.serve(async req => {
     const existing = (await allUsers()).find(u => (u.email || '').toLowerCase() === email);
 
     if (action === 'create') {
-      if (!strongEnough(body.password || '')) return fail(400, 'weak', '비밀번호는 10자 이상, 영문과 숫자를 섞어주세요');
+      if (!strongEnough(body.password || '')) return fail(400, 'weak', '비밀번호는 6자 이상으로 넣어주세요');
       if (existing) return fail(409, 'exists', '이미 로그인 계정이 있어요. 비밀번호 재설정을 쓰세요');
       const { error } = await admin.auth.admin.createUser({ email, password: body.password, email_confirm: true });
       if (error) return fail(400, 'create', error.message);
@@ -91,7 +92,7 @@ Deno.serve(async req => {
     }
 
     if (action === 'reset') {
-      if (!strongEnough(body.password || '')) return fail(400, 'weak', '비밀번호는 10자 이상, 영문과 숫자를 섞어주세요');
+      if (!strongEnough(body.password || '')) return fail(400, 'weak', '비밀번호는 6자 이상으로 넣어주세요');
       if (!existing) return fail(404, 'none', '로그인 계정이 없어요. 계정 만들기를 쓰세요');
       const { error } = await admin.auth.admin.updateUserById(existing.id, { password: body.password, email_confirm: true });
       if (error) return fail(400, 'reset', error.message);

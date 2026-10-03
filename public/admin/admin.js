@@ -2,7 +2,9 @@
 (function () {
   const { esc, fmt, fmtFull, today, addDays, diffDays, dday, statusOf, leadStatusOf, STATUS, ONGOING, CATEGORIES, TRACKS, ROLES, LEAD_STATUS, ATT, DAYS } = U;
   const app = document.getElementById('app');
-  const ROOT = location.origin + location.pathname.replace(/admin\/.*$/, '');
+  // 학생 링크·안내 문구는 항상 공식 주소로 (예전 주소로 열어도 새 주소가 나가게). 로컬·데모에서는 지금 주소
+  const ROOT = (window.HAKSA_CONFIG && window.HAKSA_CONFIG.SITE_URL && !/[?&]demo\b/.test(location.search) && !/^(localhost|127\.)/.test(location.hostname))
+    ? window.HAKSA_CONFIG.SITE_URL : location.origin + location.pathname.replace(/admin\/.*$/, '');
   const ui = {
     homeMine: false,
     stu: { q: '', status: 'ongoing', cat: '', mentor: '', view: 'list' },
@@ -494,14 +496,21 @@
   // 직원에게 보낼 사용 안내 (비밀번호는 넣지 않음)
   function guideText(p) {
     const scope = U.SCOPE[p.role] || U.SCOPE.mentor;
+    const approver = ['admin', 'head', 'lead'].includes(p.role);
     return [`[${Store.config.ACADEMY_NAME || '학사관리'} 학사관리 사용 안내]`, '',
-      `1. 주소: ${ROOT}admin/`,
-      `2. 아이디: ${p.email}`,
-      '3. 임시 비밀번호는 원장님이 따로 알려드려요.',
-      '4. 처음 로그인하면 오른쪽 위 내 이름 → 비밀번호 바꾸기에서 새 비밀번호로 바꿔주세요.',
-      `5. ${p.name}님은 ${scope}이(가) 보여요.`,
-      '6. 매일: 오늘 화면에서 챙겨야 할 학생 확인 → 상담·면담 후 기록 남기기',
-      "7. 휴대폰에서 주소를 열고 '홈 화면에 추가'하면 앱처럼 쓸 수 있어요."].join('\n');
+      '■ 접속',
+      `- 주소: ${ROOT}admin/`,
+      `- 아이디: ${p.email}`,
+      '- 비밀번호: 따로 전달드린 임시 비밀번호로 로그인한 뒤, 오른쪽 위 내 이름 → 비밀번호 바꾸기에서 바꿔주세요.',
+      "- 휴대폰에서 주소를 열고 '홈 화면에 추가'하면 앱처럼 쓸 수 있어요.",
+      '- 예전 주소(github.io)로 쓰셨다면 새 주소에서 한 번 다시 로그인해 주세요.', '',
+      `■ ${p.name}님 권한: ${roleLabel(p)} · 보이는 범위는 ${scope}`, '',
+      '■ 이렇게 써요',
+      '1. 오늘: "챙겨야 할 학생"(면담 공백 · 후속 상담 · 할 일 지연 · 시험 접수 마감)을 먼저 확인해요.',
+      '2. 학생 → + 학생 추가: 담당 학생을 등록하고, 수강 수업은 검색해서 체크해요.',
+      '3. 학생 상세 → 상담 · 면담: 상담 후 바로 기록하고 다음 면담 일정을 잡아요.',
+      '4. 학생 상세 → 학생 링크: 링크를 복사해 학생에게 보내면 학생은 자기 학습 캘린더만 볼 수 있어요.',
+      approver ? '5. 오늘 화면의 "삭제 요청"과 "다음 기수 연결"을 확인하고 승인·연결해 주세요.' : '5. 학생 삭제는 "삭제 요청"을 누르면 팀장 · 부장 · 원장이 승인해요.'].join('\n');
   }
 
   async function setStatus(s, key) {
@@ -1056,8 +1065,10 @@
     for (let i = 0; i < 4; i++) s += D[r(D.length)];
     return s;
   }
-  const pwOk = pw => pw.length >= 10 && /[a-zA-Z]/.test(pw) && /\d/.test(pw);
-  const pwField = (name, label) => field(label, `<div class="row" style="flex-wrap:nowrap"><input class="in" name="${name}" autocomplete="off" spellcheck="false" placeholder="10자 이상, 영문+숫자"><button class="btn" type="button" data-gen="${name}">자동 생성</button></div>`, 'full');
+  // 비밀번호: 앱 자체 규칙 없이 Supabase 기본 최소 길이(6자)만 확인
+  const PW_MIN = 6;
+  const pwOk = pw => String(pw || '').length >= PW_MIN;
+  const pwField = (name, label) => field(label, `<div class="row" style="flex-wrap:nowrap"><input class="in" name="${name}" autocomplete="off" spellcheck="false" placeholder="6자 이상"><button class="btn" type="button" data-gen="${name}">자동 생성</button></div>`, 'full');
   function bindGen(root) {
     root.querySelectorAll('[data-gen]').forEach(b => { b.onclick = e => { e.preventDefault(); e.stopPropagation(); root.querySelector(`[name="${b.dataset.gen}"]`).value = genPassword(); }; });
   }
@@ -1084,7 +1095,7 @@
       okText: label,
       onOk: async root => {
         const pw = vals(root).pw;
-        if (!pwOk(pw)) { toast('10자 이상, 영문과 숫자를 섞어주세요'); return false; }
+        if (!pwOk(pw)) { toast(`비밀번호는 ${PW_MIN}자 이상으로 넣어주세요`); return false; }
         await Store.staffAccount(action, { email: p.email, password: pw });
         loadAccounts(true);
         setTimeout(() => showPassword(p, pw, action === 'create' ? '로그인 계정을 만들었어요' : '비밀번호를 바꿨어요'), 0);
@@ -1156,7 +1167,7 @@
         const admins = Store.all('staff').filter(x => x.role === 'admin' && x.active !== false && x.id !== p.id);
         if (p.role === 'admin' && (v.role !== 'admin' || v.inactive) && !admins.length) { toast('원장·총괄이 최소 한 명은 있어야 해요'); return false; }
         const obj = Object.assign({}, p, { name: v.name, email: v.email.toLowerCase(), role: v.role, title: v.title, teamId: v.teamId || null, active: !v.inactive });
-        if (isNew && v.pw && !pwOk(v.pw)) { toast('임시 비밀번호는 10자 이상, 영문과 숫자를 섞어주세요'); return false; }
+        if (isNew && v.pw && !pwOk(v.pw)) { toast(`임시 비밀번호는 ${PW_MIN}자 이상으로 넣어주세요`); return false; }
         await Store.put('staff', obj);
         if (isNew && v.pw) {
           try { await Store.staffAccount('create', { email: obj.email, password: v.pw }); loadAccounts(true); setTimeout(() => showPassword(obj, v.pw, '로그인 계정을 만들었어요'), 0); }
@@ -1224,10 +1235,10 @@
     'demo-login': el => { Store.loginDemo(el.dataset.id); location.hash = '#/'; render(); },
     account: () => { location.hash = '#/settings'; },
     logout: async () => { await Store.logout(); location.hash = '#/'; render(); },
-    'pw-change': () => openModal('비밀번호 바꾸기', `<div class="form">${field('새 비밀번호 (10자 이상, 영문·숫자 섞어서)', `<input class="in" type="password" name="pw" autocomplete="new-password">`)}${field('새 비밀번호 확인', `<input class="in" type="password" name="pw2" autocomplete="new-password">`)}</div>`, {
+    'pw-change': () => openModal('비밀번호 바꾸기', `<div class="form">${field('새 비밀번호 (6자 이상)', `<input class="in" type="password" name="pw" autocomplete="new-password">`)}${field('새 비밀번호 확인', `<input class="in" type="password" name="pw2" autocomplete="new-password">`)}</div>`, {
       onOk: async root => {
         const v = vals(root);
-        if (v.pw.length < 10 || !/[a-zA-Z]/.test(v.pw) || !/\d/.test(v.pw)) { toast('10자 이상, 영문과 숫자를 섞어주세요'); return false; }
+        if (!pwOk(v.pw)) { toast(`비밀번호는 ${PW_MIN}자 이상으로 넣어주세요`); return false; }
         if (v.pw !== v.pw2) { toast('비밀번호 확인이 달라요'); return false; }
         await Store.changePassword(v.pw); toast('비밀번호를 바꿨어요');
       }

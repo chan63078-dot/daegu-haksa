@@ -5,5 +5,6 @@
 window.HAKSA_CONFIG = {
   SUPABASE_URL: 'https://kcearusumvfwoviotypd.supabase.co',
   SUPABASE_ANON_KEY: 'sb_publishable_fm5_XhfRfXQH2bpPcDjGHw_5rL_-I6u',  // publishable 키 (공개용)
-  ACADEMY_NAME: '코리아AI아카데미 대구점'
+  ACADEMY_NAME: '코리아AI아카데미 대구점',
+  SITE_URL: 'https://daegu-haksa.netlify.app/'   // 학생 링크·안내 문구에 쓰는 공식 주소
 };
