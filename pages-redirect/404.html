@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>주소가 바뀌었어요</title>
+  <script>
+    // 예전 주소(github.io/daegu-haksa/...)로 들어오면 같은 경로·링크 그대로 새 주소로 이동
+    var path = location.pathname.replace(/^\/daegu-haksa/, '') || '/';
+    location.replace('https://daegu-haksa.netlify.app' + path + location.search + location.hash);
+  </script>
+</head>
+<body style="font-family:sans-serif;text-align:center;padding:60px 16px">
+  <p>학사관리 주소가 바뀌었어요. 새 주소로 이동하고 있어요…</p>
+  <p><a href="https://daegu-haksa.netlify.app/">https://daegu-haksa.netlify.app</a></p>
+</body>
+</html>

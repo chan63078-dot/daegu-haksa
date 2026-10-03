@@ -4,8 +4,10 @@
 
 웹사이트 파일은 모두 `public/` 폴더에 있어요.
 
-**배포 주소**: https://chan63078-dot.github.io/daegu-haksa/admin/
-`main` 브랜치에 푸시하면 GitHub Actions가 권한 검증 테스트를 돌리고, 통과하면 `public/` 폴더를 GitHub Pages에 자동 배포합니다. 테스트가 실패하면 배포되지 않아요.
+**배포 주소**: https://daegu-haksa.netlify.app/admin/ (학생 화면: `https://daegu-haksa.netlify.app/?t=학생토큰`)
+
+`main` 브랜치에 푸시하면 Netlify가 `netlify.toml` 설정대로 권한 검증 테스트를 돌리고, 통과하면 `public/` 폴더를 배포합니다. 테스트가 실패하면 배포되지 않아요.
+예전 주소(`chan63078-dot.github.io/daegu-haksa`)는 GitHub Pages에서 같은 경로·링크 그대로 새 주소로 넘겨 줍니다(`pages-redirect/`).
 
 | 주소 | 화면 |
 | --- | --- |
@@ -30,7 +32,7 @@ python -m http.server 8765 --directory public
 4. Authentication → Users → Add user 에서 직원마다 같은 이메일로 계정을 만듭니다(Auto Confirm 체크, 임시 비밀번호).
 5. Authentication → Providers → Email 에서 "Allow new users to sign up"을 끄세요. 직원 계정은 관리자만 만들 수 있게 합니다.
 6. Project Settings → API 의 Project URL과 anon public 키를 `public/config.js`에 넣습니다. **service_role 키는 절대 넣지 마세요.**
-7. 바꾼 `config.js`를 커밋·푸시하면 자동으로 배포됩니다. (anon 키는 공개되어도 되는 키이고, 데이터는 DB 권한 규칙이 지켜요.)
+7. 바꾼 `config.js`를 커밋·푸시하면 Netlify가 자동으로 배포합니다. (anon 키는 공개되어도 되는 키이고, 데이터는 DB 권한 규칙이 지켜요.)
 8. 이후 직원 추가·수정·삭제는 원장·총괄 계정으로 설정 → 직원에서 합니다. 새 직원은 4번처럼 로그인 계정도 만들어 주고, 삭제한 직원은 로그인 계정도 지워주세요.
 9. 설정 → 직원 → "안내 문구"를 눌러 직원에게 보낼 사용 안내를 복사합니다(임시 비밀번호는 따로 전달).
 10. 학생 → "엑셀로 등록"에서 양식 파일을 받아 학생을 한꺼번에 등록합니다. 한국어 엑셀에서 저장한 CSV도 그대로 읽어요.

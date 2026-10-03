@@ -1,4 +1,4 @@
-name: 테스트 후 배포
+name: 테스트 + 예전 주소 안내 페이지 배포
 
 on:
   push:
@@ -35,10 +35,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
-      - name: 캐시 무효화용 버전 표시
-        run: grep -rl '__BUILD__' public | xargs sed -i "s/__BUILD__/${GITHUB_SHA::8}/g"
+      # 실제 사이트는 Netlify(daegu-haksa.netlify.app)에서 운영.
+      # GitHub Pages 에는 예전 링크를 새 주소로 넘겨 주는 안내 페이지만 올림
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: public
+          path: pages-redirect
       - id: deployment
         uses: actions/deploy-pages@v4
