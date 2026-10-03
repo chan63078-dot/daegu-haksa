@@ -165,6 +165,24 @@ ok('같은 번호 하루 4번째는 차단', !r.ok, r.e);
 r = await as(null, () => tryq(`select submit_lead('','010-1111-3333','AI','')`));
 ok('이름 없으면 거부', !r.ok);
 
+// 회차별 녹화본: 멘토는 담당 학생이 듣는 수업만
+const recOf = async id => (await db.query(`select data->'recordings' r from items where collection='classes' and id=$1`, [id])).rows[0].r;
+r = await as('m1@x.com', () => tryq(`select class_set_recordings('c1', '{"2026-10-05":{"url":"https://zoom.us/rec/a","note":"pw"}}')`));
+ok('멘토1: 담당 학생 수업에 녹화본 저장', r.ok && (await recOf('c1'))['2026-10-05'].url === 'https://zoom.us/rec/a', r.e);
+ok('녹화본 저장해도 수업 정보는 그대로', (await db.query(`select data->>'name' n from items where collection='classes' and id='c1'`)).rows[0].n === '파이썬');
+r = await as('m2@x.com', () => tryq(`select class_set_recordings('c1', '{}')`));
+ok('멘토2: 담당 학생 없는 수업은 못 바꿈', !r.ok && (await recOf('c1'))['2026-10-05'], r.e);
+r = await as('m1@x.com', () => tryq(`select class_set_recordings('c1', '{"2026-10-05":{"url":"javascript:alert(1)"}}')`));
+ok('녹화본: https 아닌 링크 거부', !r.ok);
+r = await as('m1@x.com', () => tryq(`select class_set_recordings('c1', '{"bad":{"url":"https://a.b"}}')`));
+ok('녹화본: 날짜 아닌 키 거부', !r.ok);
+r = await as('lead1@x.com', () => tryq(`select class_set_recordings('c1', '{"2026-10-07":{"url":"https://zoom.us/rec/b","note":""}}')`));
+ok('팀장: 녹화본 저장', r.ok, r.e);
+r = await as(null, () => tryq(`select class_set_recordings('c1', '{}')`));
+ok('비로그인: 녹화본 못 바꿈', !r.ok);
+r = await as('m1@x.com', () => tryq(`update items set data = data || '{"name":"x"}' where collection='classes' and id='c1'`));
+ok('멘토: 수업 정보 직접 수정은 여전히 불가', !r.ok || r.n === 0, r.e);
+
 // 재실행 안전
 r = await db.exec(schema).then(() => ({ ok: true }), e => ({ ok: false, e: e.message }));
 ok('스크립트 두 번 실행해도 됨', r.ok, r.e);

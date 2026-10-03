@@ -176,6 +176,18 @@
       try { await Store.put('logs', row); } catch (e) { console.warn('log 실패', e); }
     },
 
+    // 회차별 녹화본만 저장 (멘토도 담당 학생 수업이면 가능 — DB 함수가 권한 확인)
+    async setRecordings(classId, rec) {
+      const c = db.classes.find(r => r.id === classId);
+      if (live) {
+        const { error } = await sb.rpc('class_set_recordings', { p_class: classId, p_rec: rec });
+        if (error) throw error;
+      }
+      if (c) { c.recordings = rec; c.updatedAt = new Date().toISOString(); }
+      if (!live) saveLocal();
+      return c;
+    },
+
     // 학생 전용 링크 화면 (로그인 없이 토큰으로)
     async studentView(token) {
       if (live) {

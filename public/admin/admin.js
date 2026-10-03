@@ -772,14 +772,16 @@
     ${recordingsCard(c)}`;
   }
   // 회차별 줌 녹화본: 날짜마다 링크·메모를 넣으면 학생 캘린더 그 날짜에 '녹화본 보기'
+  // 녹화본 입력: 팀장 이상은 모든 수업, 멘토는 담당 학생이 듣는 수업
+  const canEditRecordings = c => isLead() || students().some(s => s.mentorId === me().id && (s.classIds || []).includes(c.id));
   function recordingsCard(c) {
     const ss = U.sessions(c);
     const rec = c.recordings || {};
     const t = today();
-    const edit = isLead();
+    const edit = canEditRecordings(c);
     const filled = ss.filter(d => rec[d] && rec[d].url).length;
     if (!ss.length) return `<section class="card card-pad" style="margin-top:16px"><b>회차별 녹화본</b><p class="faint">수업 요일과 기간이 있어야 회차가 만들어져요. 수업 정보를 먼저 채워주세요.</p></section>`;
-    return `<section class="card" style="margin-top:16px"><div class="card-head"><h3>회차별 녹화본 <span class="faint" style="font-weight:600">${filled}/${ss.length}</span></h3><span class="faint">링크를 넣고 저장하면 학생 캘린더의 그 날짜에 '녹화본 보기'가 생겨요${edit ? '' : ' · 입력은 팀장 이상'}</span></div>
+    return `<section class="card" style="margin-top:16px"><div class="card-head"><h3>회차별 녹화본 <span class="faint" style="font-weight:600">${filled}/${ss.length}</span></h3><span class="faint">링크를 넣고 저장하면 학생 캘린더의 그 날짜에 '녹화본 보기'가 생겨요${edit ? '' : ' · 입력은 담당 학생이 듣는 수업만 할 수 있어요'}</span></div>
       <div class="card-body" id="rec-form"><div id="rec-scroll" style="position:relative;max-height:440px;overflow:auto;border:1px solid var(--line-2);border-radius:10px"><table class="tbl"><thead style="position:sticky;top:0;background:var(--surface);z-index:1"><tr><th style="width:70px">회차</th><th style="width:110px">날짜</th><th>녹화본 링크</th><th style="width:220px">메모 (예: 암호)</th></tr></thead><tbody>
       ${ss.map((d, i) => { const r = rec[d] || {}; return `<tr data-rec-day="${d}" style="${d === t ? 'background:var(--brand-soft)' : d > t ? 'opacity:.65' : ''}"><td>${i + 1}/${ss.length}</td><td style="white-space:nowrap">${fmt(d)}${d === t ? ' <span class="pill green">오늘</span>' : ''}</td>
         <td><input class="in" name="url-${d}" value="${esc(r.url || '')}" placeholder="https://zoom.us/rec/..." ${edit ? '' : 'disabled'} style="height:34px"></td>
@@ -1424,8 +1426,8 @@
       });
       if (bad.length) return toast(`링크는 https:// 로 시작해야 해요: ${bad.join(', ')}`);
       const before = Object.keys(c.recordings || {}).filter(d => (c.recordings[d] || {}).url).length;
-      c.recordings = rec;
-      await Store.put('classes', c);
+      try { await Store.setRecordings(c.id, rec); }
+      catch (e) { console.warn(e); return toast('저장하지 못했어요. 담당 학생이 듣는 수업인지 확인해 주세요'); }
       const now = Object.values(rec).filter(r => r.url).length;
       await Store.log('recording', c.id, `녹화본 저장: ${c.name} (${before}→${now}개)`);
       toast(`녹화본 ${now}개를 저장했어요`); render();

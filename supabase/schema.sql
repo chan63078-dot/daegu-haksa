@@ -148,6 +148,32 @@ begin
   where collection = 'tasks' and id = p_task and student_id = sid and coalesce((data->>'shared')::boolean, true);
 end $$;
 
+-- 3-1) 회차별 녹화본 저장: 팀장 이상은 모든 수업, 멘토는 담당 학생이 듣는 수업만 (녹화본 칸만 바꿈)
+create or replace function public.class_set_recordings(p_class text, p_rec jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare k text; v jsonb;
+begin
+  if public.haksa_me() is null then raise exception 'not allowed'; end if;
+  if not (public.haksa_me()->>'role' in ('admin', 'head', 'lead') or exists (
+    select 1 from items s where s.collection = 'students' and coalesce(s.data->'classIds', '[]'::jsonb) ? p_class
+      and public.haksa_can_see_row(s.mentor_id, s.team_id))) then
+    raise exception 'not allowed';
+  end if;
+  if p_rec is null or jsonb_typeof(p_rec) <> 'object' then raise exception 'invalid'; end if;
+  for k, v in select * from jsonb_each(p_rec) loop
+    if k !~ '^\d{4}-\d{2}-\d{2}$' or jsonb_typeof(v) <> 'object'
+       or (coalesce(v->>'url', '') <> '' and (v->>'url') !~* '^https?://\S+$')
+       or length(coalesce(v->>'url', '')) > 1000 or length(coalesce(v->>'note', '')) > 200 then
+      raise exception 'invalid';
+    end if;
+  end loop;
+  update items set data = jsonb_set(data, '{recordings}', p_rec), updated_at = now(), updated_by = public.haksa_me()->>'id'
+  where collection = 'classes' and id = p_class;
+  if not found then raise exception 'not found'; end if;
+end $$;
+revoke all on function public.class_set_recordings(text, jsonb) from public;
+grant execute on function public.class_set_recordings(text, jsonb) to authenticated;
+
 -- 4) 공개 상담 신청 폼
 create or replace function public.submit_lead(p_name text, p_phone text, p_interest text, p_memo text) returns void
 language plpgsql security definer set search_path = public as $$
