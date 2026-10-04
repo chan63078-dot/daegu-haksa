@@ -773,6 +773,13 @@
   }
   // 회차별 줌 녹화본: 날짜마다 링크·메모를 넣으면 학생 캘린더 그 날짜에 '녹화본 보기'
   // 녹화본 입력: 팀장 이상은 모든 수업, 멘토는 담당 학생이 듣는 수업
+  // 줌 공유 문구를 통째로 붙여 넣어도 링크와 암호를 나눠 줌 ("링크 ... 암호: xxx")
+  function splitRecording(text) {
+    const t = String(text || '');
+    const url = (t.match(/https?:\/\/[^\s<>"']+/i) || [''])[0];
+    const pw = (t.match(/(?:암호|비밀번호|패스코드|passcode|password|pw)\s*[:：]?\s*(\S+)/i) || [])[1] || '';
+    return { url, pw };
+  }
   const canEditRecordings = c => isLead() || students().some(s => s.mentorId === me().id && (s.classIds || []).includes(c.id));
   function recordingsCard(c) {
     const ss = U.sessions(c);
@@ -781,7 +788,7 @@
     const edit = canEditRecordings(c);
     const filled = ss.filter(d => rec[d] && rec[d].url).length;
     if (!ss.length) return `<section class="card card-pad" style="margin-top:16px"><b>회차별 녹화본</b><p class="faint">수업 요일과 기간이 있어야 회차가 만들어져요. 수업 정보를 먼저 채워주세요.</p></section>`;
-    return `<section class="card" style="margin-top:16px"><div class="card-head"><h3>회차별 녹화본 <span class="faint" style="font-weight:600">${filled}/${ss.length}</span></h3><span class="faint">링크를 넣고 저장하면 학생 캘린더의 그 날짜에 '녹화본 보기'가 생겨요${edit ? '' : ' · 입력은 담당 학생이 듣는 수업만 할 수 있어요'}</span></div>
+    return `<section class="card" style="margin-top:16px"><div class="card-head"><h3>회차별 녹화본 <span class="faint" style="font-weight:600">${filled}/${ss.length}</span></h3><span class="faint">링크를 넣고 저장하면 학생 캘린더의 그 날짜에 '녹화본 보기'가 생겨요 · 줌 공유 문구를 통째로 붙여 넣으면 암호는 메모 칸으로 나눠져요${edit ? '' : ' · 입력은 담당 학생이 듣는 수업만 할 수 있어요'}</span></div>
       <div class="card-body" id="rec-form"><div id="rec-scroll" style="position:relative;max-height:440px;overflow:auto;border:1px solid var(--line-2);border-radius:10px"><table class="tbl"><thead style="position:sticky;top:0;background:var(--surface);z-index:1"><tr><th style="width:70px">회차</th><th style="width:110px">날짜</th><th>녹화본 링크</th><th style="width:220px">메모 (예: 암호)</th></tr></thead><tbody>
       ${ss.map((d, i) => { const r = rec[d] || {}; return `<tr data-rec-day="${d}" style="${d === t ? 'background:var(--brand-soft)' : d > t ? 'opacity:.65' : ''}"><td>${i + 1}/${ss.length}</td><td style="white-space:nowrap">${fmt(d)}${d === t ? ' <span class="pill green">오늘</span>' : ''}</td>
         <td><input class="in" name="url-${d}" value="${esc(r.url || '')}" placeholder="https://zoom.us/rec/..." ${edit ? '' : 'disabled'} style="height:34px"></td>
@@ -1419,7 +1426,9 @@
       const rec = {};
       const bad = [];
       U.sessions(c).forEach(d => {
-        const url = (v['url-' + d] || '').trim(), note = (v['note-' + d] || '').trim();
+        let url = (v['url-' + d] || '').trim(), note = (v['note-' + d] || '').trim();
+        // 링크 칸에 암호까지 같이 들어 있으면 나눠서 저장
+        if (/\s/.test(url)) { const sp = splitRecording(url); if (sp.url) { url = sp.url; if (sp.pw && !note) note = sp.pw; } }
         if (!url && !note) return;
         if (url && !/^https?:\/\/\S+$/i.test(url)) { bad.push(fmt(d)); return; }
         rec[d] = { url, note };
@@ -1565,6 +1574,18 @@
     const tmp = document.createElement('div');
     tmp.innerHTML = p.page();
     p.ids.forEach(id => { const cur = document.getElementById(id), next = tmp.querySelector('#' + id); if (cur && next) cur.innerHTML = next.innerHTML; });
+  });
+  // 녹화본 칸에 줌 공유 문구 붙여 넣기 → 링크 칸에는 링크만, 메모 칸에는 암호만
+  document.addEventListener('paste', e => {
+    const row = e.target.closest && e.target.closest('tr[data-rec-day]');
+    if (!row || e.target.disabled) return;
+    const sp = splitRecording((e.clipboardData || window.clipboardData).getData('text'));
+    if (!sp.url) return;
+    e.preventDefault();
+    const d = row.dataset.recDay, urlIn = row.querySelector(`[name="url-${d}"]`), noteIn = row.querySelector(`[name="note-${d}"]`);
+    urlIn.value = sp.url;
+    if (sp.pw) noteIn.value = sp.pw;
+    toast(sp.pw ? '링크와 암호를 나눠 넣었어요. 녹화본 저장을 눌러주세요' : '링크를 넣었어요. 녹화본 저장을 눌러주세요');
   });
   // 학생 등록·정보 폼의 수업 검색: 다시 그리지 않고 목록만 걸러서 체크 상태 유지
   document.addEventListener('input', e => {
