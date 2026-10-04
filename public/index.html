@@ -116,7 +116,7 @@
       data.classes.forEach(c => {
         const ss = sessions(c);
         items.push({ kind: 'class', c, ss });
-        ss.forEach((d, i) => add(d, { kind: 'class', title: c.name, n: i + 1, N: ss.length, time: `${c.start || ''}~${c.end || ''}`, place: c.room, rec: (c.recordings || {})[d] }));
+        ss.forEach((d, i) => add(d, { kind: 'class', title: c.name, n: i + 1, N: ss.length, time: `${c.start || ''}~${c.end || ''}`, place: c.room, rec: (c.recordings || {})[d], zoom: d >= t ? c.zoom : null }));
       });
       (data.student.plans || []).forEach(p => {
         const ss = sessions(p);
@@ -146,7 +146,7 @@
       const mt = data.meetings.filter(m => m.date >= t).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')))[0];
       const card = (cls, k, v, ti, s) => `<div class="card key ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="t">${ti}</div><div class="s">${s}</div></div>`;
       return `<div class="keys">
-        ${next ? card('class', '다음 수업', dday(next.d), `${esc(next.e.title)} · ${next.e.n}/${next.e.N}회`, `${fmt(next.d)} ${esc(next.e.time)}${next.e.place ? ' · ' + esc(next.e.place) : ''}`) : card('class', '다음 수업', '-', '예정된 수업이 없어요', '')}
+        ${next ? card('class', '다음 수업', dday(next.d), `${esc(next.e.title)} · ${next.e.n}/${next.e.N}회`, `${fmt(next.d)} ${esc(next.e.time)}${next.e.place ? ' · ' + esc(next.e.place) : ''}${zoomLink(next.e)}`) : card('class', '다음 수업', '-', '예정된 수업이 없어요', '')}
         ${opening ? card('open', '다음 개강', dday(opening.startDate), esc(opening.name), `${fmt(opening.startDate)} · ${(opening.days || []).map(d => DAYS[d]).join('·')}`) : card('open', '다음 개강', '-', '예정된 개강이 없어요', '')}
         ${ex ? card('exam', ex.reg ? '시험 접수 마감' : '다음 시험', dday(ex.d), esc(ex.e.name), ex.reg ? `${fmt(ex.e.regEnd)}까지 접수 · 시험 ${fmt(ex.e.examDate)}` : `시험 ${fmt(ex.e.examDate)}${ex.e.examEnd && ex.e.examEnd !== ex.e.examDate ? '~' + fmt(ex.e.examEnd) : ''}`) : card('exam', '다음 시험', '-', '연결된 시험이 없어요', '멘토에게 응시 시험을 알려주세요')}
         ${mt ? card('meet', '다음 면담', dday(mt.date), esc(mt.topic || '멘토 면담'), `${fmt(mt.date)} ${esc(mt.time || '')}`) : card('meet', '다음 면담', '-', '예정된 면담이 없어요', '')}
@@ -180,7 +180,9 @@
       return `<div class="card card-pad listview">${rows || '<div class="empty">이 달에는 일정이 없어요</div>'}</div>`;
     }
     const KIND = { class: '학원 수업', plan: '집에서 학습', exam: '시험', meet: '면담', task: '할 일' };
-    const ev = e => `<div style="padding:4px 0;${e.done ? 'text-decoration:line-through;opacity:.6' : ''}"><span class="tag ${e.kind}">${KIND[e.kind]}</span><b style="font-size:14px">${esc(e.title)}</b>${e.N ? ` <span class="faint">${e.n}/${e.N}회</span>` : ''}${e.time || e.place ? `<div class="faint" style="margin-left:2px">${esc([e.time, e.place].filter(Boolean).join(' · '))}</div>` : ''}${recLink(e)}</div>`;
+    const ev = e => `<div style="padding:4px 0;${e.done ? 'text-decoration:line-through;opacity:.6' : ''}"><span class="tag ${e.kind}">${KIND[e.kind]}</span><b style="font-size:14px">${esc(e.title)}</b>${e.N ? ` <span class="faint">${e.n}/${e.N}회</span>` : ''}${e.time || e.place ? `<div class="faint" style="margin-left:2px">${esc([e.time, e.place].filter(Boolean).join(' · '))}</div>` : ''}${zoomLink(e)}${recLink(e)}</div>`;
+    // 실시간 수업 줌: 오늘·앞으로의 수업 날짜에만, https 링크만
+    const zoomLink = e => e.zoom && /^https?:\/\//i.test(e.zoom.url || '') ? `<div style="margin:6px 0 2px"><a class="btn sm" style="background:#2D8CFF;color:#fff;border-color:#2D8CFF" href="${esc(e.zoom.url)}" target="_blank" rel="noopener noreferrer">● 실시간 수업 참여</a>${e.zoom.meetingId || e.zoom.pw ? ` <span class="faint">${[e.zoom.meetingId && 'ID ' + esc(e.zoom.meetingId), e.zoom.pw && '암호 ' + esc(e.zoom.pw)].filter(Boolean).join(' · ')}</span>` : ''}</div>` : '';
     // 녹화본: https 링크만, 새 창으로
     const recLink = e => e.rec && /^https?:\/\//i.test(e.rec.url || '') ? `<div style="margin:6px 0 2px"><a class="btn sm primary" href="${esc(e.rec.url)}" target="_blank" rel="noopener noreferrer">▶ 녹화본 보기</a>${e.rec.note ? ` <span class="faint">${esc(e.rec.note)}</span>` : ''}</div>` : '';
 

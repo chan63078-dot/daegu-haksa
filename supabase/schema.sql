@@ -122,7 +122,7 @@ begin
       'classIds', coalesce(s.data->'classIds', '[]'::jsonb), 'plans', coalesce(s.data->'plans', '[]'::jsonb)),
     'classes', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'name', c.data->'name', 'days', c.data->'days', 'start', c.data->'start', 'end', c.data->'end',
         'startDate', c.data->'startDate', 'endDate', c.data->'endDate', 'room', c.data->'room', 'archived', c.data->'archived',
-        'note', c.data->'note', 'instructor', c.data->'instructor', 'recordings', c.data->'recordings'))
+        'note', c.data->'note', 'instructor', c.data->'instructor', 'recordings', c.data->'recordings', 'zoom', c.data->'zoom'))
       from items c where c.collection = 'classes' and coalesce(s.data->'classIds', '[]'::jsonb) ? c.id), '[]'::jsonb),
     'attendance', coalesce((select jsonb_agg(jsonb_build_object('classId', a.data->'classId', 'date', a.data->'date', 'state', a.data->'state'))
       from items a where a.collection = 'attendance' and a.student_id = s.id), '[]'::jsonb),
@@ -148,17 +148,19 @@ begin
   where collection = 'tasks' and id = p_task and student_id = sid and coalesce((data->>'shared')::boolean, true);
 end $$;
 
--- 3-1) 회차별 녹화본 저장: 팀장 이상은 모든 수업, 멘토는 담당 학생이 듣는 수업만 (녹화본 칸만 바꿈)
+-- 3-1) 수업의 녹화본·실시간 줌 링크: 팀장 이상은 모든 수업, 멘토는 담당 학생이 듣는 수업만 (그 칸만 바꿈)
+create or replace function public.haksa_can_edit_class_links(p_class text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.haksa_me() is not null and (public.haksa_me()->>'role' in ('admin', 'head', 'lead') or exists (
+    select 1 from items s where s.collection = 'students' and coalesce(s.data->'classIds', '[]'::jsonb) ? p_class
+      and public.haksa_can_see_row(s.mentor_id, s.team_id)))
+$$;
+
 create or replace function public.class_set_recordings(p_class text, p_rec jsonb) returns void
 language plpgsql security definer set search_path = public as $$
 declare k text; v jsonb;
 begin
-  if public.haksa_me() is null then raise exception 'not allowed'; end if;
-  if not (public.haksa_me()->>'role' in ('admin', 'head', 'lead') or exists (
-    select 1 from items s where s.collection = 'students' and coalesce(s.data->'classIds', '[]'::jsonb) ? p_class
-      and public.haksa_can_see_row(s.mentor_id, s.team_id))) then
-    raise exception 'not allowed';
-  end if;
+  if not public.haksa_can_edit_class_links(p_class) then raise exception 'not allowed'; end if;
   if p_rec is null or jsonb_typeof(p_rec) <> 'object' then raise exception 'invalid'; end if;
   for k, v in select * from jsonb_each(p_rec) loop
     if k !~ '^\d{4}-\d{2}-\d{2}$' or jsonb_typeof(v) <> 'object'
@@ -173,6 +175,26 @@ begin
 end $$;
 revoke all on function public.class_set_recordings(text, jsonb) from public;
 grant execute on function public.class_set_recordings(text, jsonb) to authenticated;
+
+-- 실시간 수업 줌 (고정 링크·회의 ID·암호). 빈 값({})이면 지움
+create or replace function public.class_set_zoom(p_class text, p_zoom jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.haksa_can_edit_class_links(p_class) then raise exception 'not allowed'; end if;
+  if p_zoom is null or jsonb_typeof(p_zoom) <> 'object'
+     or (coalesce(p_zoom->>'url', '') <> '' and (p_zoom->>'url') !~* '^https?://\S+$')
+     or length(coalesce(p_zoom->>'url', '')) > 1000 or length(coalesce(p_zoom->>'meetingId', '')) > 40
+     or length(coalesce(p_zoom->>'pw', '')) > 60 then
+    raise exception 'invalid';
+  end if;
+  update items set data = case when coalesce(p_zoom->>'url', '') = '' then data - 'zoom'
+      else jsonb_set(data, '{zoom}', jsonb_build_object('url', p_zoom->>'url', 'meetingId', coalesce(p_zoom->>'meetingId', ''), 'pw', coalesce(p_zoom->>'pw', ''))) end,
+    updated_at = now(), updated_by = public.haksa_me()->>'id'
+  where collection = 'classes' and id = p_class;
+  if not found then raise exception 'not found'; end if;
+end $$;
+revoke all on function public.class_set_zoom(text, jsonb) from public;
+grant execute on function public.class_set_zoom(text, jsonb) to authenticated;
 
 -- 4) 공개 상담 신청 폼
 create or replace function public.submit_lead(p_name text, p_phone text, p_interest text, p_memo text) returns void

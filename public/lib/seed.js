@@ -28,7 +28,7 @@ window.HAKSA_SEED = function (db, { uid, newToken }) {
   const teamOf = id => (db.staff.find(s => s.id === id) || {}).teamId || null;
 
   db.classes = [
-    { id: 'c-kdt', name: 'KDT 생성형 AI 서비스 개발자', days: [1, 2, 3, 4, 5], start: '09:30', end: '18:00', startDate: d(-45), endDate: d(120), room: '501호', gov: true, color: 'green' },
+    { id: 'c-kdt', name: 'KDT 생성형 AI 서비스 개발자', days: [1, 2, 3, 4, 5], start: '09:30', end: '18:00', startDate: d(-45), endDate: d(120), room: '501호', gov: true, color: 'green', zoom: { url: 'https://zoom.us/j/0000000000', meetingId: '000 0000 0000', pw: 'demo' } },
     { id: 'c-ip', name: '정보처리기사 실기 대비', days: [2, 4], start: '19:00', end: '22:00', startDate: d(-20), endDate: d(30), room: '302호', gov: false, color: 'blue' },
     { id: 'c-py', name: '파이썬 기초', days: [1, 3], start: '19:00', end: '21:00', startDate: d(-10), endDate: d(50), room: '302호', gov: false, color: 'amber' },
     { id: 'c-sqld', name: 'SQLD 단기 특강', days: [6], start: '10:00', end: '13:00', startDate: d(-14), endDate: d(21), room: '303호', gov: false, color: 'violet' },

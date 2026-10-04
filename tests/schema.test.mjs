@@ -183,6 +183,19 @@ ok('비로그인: 녹화본 못 바꿈', !r.ok);
 r = await as('m1@x.com', () => tryq(`update items set data = data || '{"name":"x"}' where collection='classes' and id='c1'`));
 ok('멘토: 수업 정보 직접 수정은 여전히 불가', !r.ok || r.n === 0, r.e);
 
+// 실시간 수업 줌: 녹화본과 같은 권한
+const zoomOf = async id => (await db.query(`select data->'zoom' z from items where collection='classes' and id=$1`, [id])).rows[0].z;
+r = await as('m1@x.com', () => tryq(`select class_set_zoom('c1', '{"url":"https://us06web.zoom.us/j/1?pwd=x","meetingId":"854 9427 0486","pw":"090330"}')`));
+ok('멘토1: 담당 학생 수업에 줌 링크 저장', r.ok && (await zoomOf('c1')).pw === '090330', r.e);
+r = await as('m2@x.com', () => tryq(`select class_set_zoom('c1', '{}')`));
+ok('멘토2: 담당 학생 없는 수업 줌 못 바꿈', !r.ok && (await zoomOf('c1')), r.e);
+r = await as('m1@x.com', () => tryq(`select class_set_zoom('c1', '{"url":"javascript:alert(1)"}')`));
+ok('줌: https 아닌 링크 거부', !r.ok);
+v = (await as(null, () => db.query(`select student_view('tok-s1-aaaaaaaa') v`))).rows[0].v;
+ok('학생 링크: 실시간 줌 보임', v && v.classes[0].zoom && v.classes[0].zoom.meetingId === '854 9427 0486');
+r = await as('lead1@x.com', () => tryq(`select class_set_zoom('c1', '{}')`));
+ok('팀장: 줌 링크 지우기', r.ok && (await zoomOf('c1')) === null, r.e);
+
 // 재실행 안전
 r = await db.exec(schema).then(() => ({ ok: true }), e => ({ ok: false, e: e.message }));
 ok('스크립트 두 번 실행해도 됨', r.ok, r.e);

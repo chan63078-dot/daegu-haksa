@@ -190,6 +190,20 @@
       return c;
     },
 
+    // 실시간 수업 줌 링크만 저장 (권한은 녹화본과 같음). url이 비면 지움
+    async setZoom(classId, zoom) {
+      const c = db.classes.find(r => r.id === classId);
+      const z = zoom && zoom.url ? { url: zoom.url, meetingId: zoom.meetingId || '', pw: zoom.pw || '' } : null;
+      if (live) {
+        const { error } = await sb.rpc('class_set_zoom', { p_class: classId, p_zoom: z || {} });
+        if (error && error.code === 'PGRST202' && c) { const n = { ...c }; if (z) n.zoom = z; else delete n.zoom; return Store.put('classes', n); }
+        if (error) throw error;
+      }
+      if (c) { if (z) c.zoom = z; else delete c.zoom; c.updatedAt = new Date().toISOString(); }
+      if (!live) saveLocal();
+      return c;
+    },
+
     // 학생 전용 링크 화면 (로그인 없이 토큰으로)
     async studentView(token) {
       if (live) {
