@@ -186,6 +186,19 @@
     // 녹화본: https 링크만, 새 창으로
     const recLink = e => e.rec && /^https?:\/\//i.test(e.rec.url || '') ? `<div style="margin:6px 0 2px"><a class="btn sm primary" href="${esc(e.rec.url)}" target="_blank" rel="noopener noreferrer">▶ 녹화본 보기</a>${e.rec.note ? ` <span class="faint">${esc(e.rec.note)}</span>` : ''}</div>` : '';
 
+    // 실시간 수업 줌: 날짜와 상관없이 항상 보이게 (종강 전 수업만, 같은 링크는 한 줄로)
+    function zoomBox() {
+      const by = {};
+      data.classes.filter(c => c.zoom && /^https?:\/\//i.test(c.zoom.url || '') && !c.archived && (c.endDate || '9999') >= t)
+        .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))
+        .forEach(c => { const k = c.zoom.url; (by[k] = by[k] || { z: c.zoom, names: [] }).names.push(c.name); });
+      const rows = Object.values(by);
+      if (!rows.length) return '';
+      return `<section class="card"><div class="card-head"><h3>실시간 수업 줌</h3><span class="faint">수업 시간에 눌러서 들어가요</span></div><div class="card-body"><div class="list">
+        ${rows.map(r => `<div class="li" style="display:block"><b style="font-size:14px">${r.names.map(esc).join(' · ')}</b>${zoomLink({ zoom: r.z })}</div>`).join('')}
+      </div></div></section>`;
+    }
+
     function side() {
       const list = (byDate[ui.sel] || []);
       const tasks = data.tasks.slice().sort((a, b) => (a.done - b.done) || ((a.due || '9') < (b.due || '9') ? -1 : 1));
@@ -198,6 +211,7 @@
           ${N ? `<div class="meter"><i style="width:${Math.round(done / N * 100)}%"></i></div><div class="faint">${done}/${N}회 진행</div>` : ''}</div>`;
       };
       return `<div class="side">
+        ${zoomBox()}
         <section class="card"><div class="card-head"><h3>${fmt(ui.sel)}${ui.sel === t ? ' · 오늘' : ''}</h3>${HOLIDAYS[ui.sel] ? `<span class="pill red">${esc(HOLIDAYS[ui.sel])}</span>` : ''}</div>
           <div class="card-body agenda">${list.length ? list.map(ev).join('') : '<div class="faint">이 날은 일정이 없어요</div>'}</div></section>
         <section class="card"><div class="card-head"><h3>할 일</h3><span class="faint">${tasks.filter(k => !k.done).length}개 남음</span></div><div class="card-body">
