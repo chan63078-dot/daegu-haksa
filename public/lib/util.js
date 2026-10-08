@@ -3,13 +3,14 @@
   const STATUS = [
     { key: 'active', label: '수강중', tone: 'green' },
     { key: 'gov', label: '국비 연계', tone: 'blue' },
+    { key: 'prospect', label: '추등가망생', tone: 'amber' },
     { key: 'employed', label: '취업 완료', tone: 'violet' },
     { key: 'school', label: '진학 완료', tone: 'violet' },
     { key: 'done', label: '수료', tone: 'gray' },
     { key: 'dropped', label: '중도 이탈', tone: 'red' }
   ];
-  const ONGOING = ['active', 'gov'];
-  const CATEGORIES = ['10대', '대학 1·2학년', '대학 3·4학년', '대학 휴학', '취준 20대', '취준 30대 이상', '재직자', '시니어'];
+  const ONGOING = ['active', 'gov', 'prospect'];
+  const CATEGORIES = ['10대', '대학 1·2학년', '대학 3·4학년', '대학 휴학', '취준 20대', '취준 30대 이상', '재직자', '시니어', '비대면'];
   const TRACKS = ['전공', '비전공'];
   const ROLES = { admin: '원장·총괄', head: '부장(사업부)', lead: '팀장', mentor: '멘토' };
   // 화면에 보일 직함: 직함(경력멘토 등)이 있으면 그것, 없으면 권한 이름
