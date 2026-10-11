@@ -196,6 +196,13 @@ ok('학생 링크: 실시간 줌 보임', v && v.classes[0].zoom && v.classes[0]
 r = await as('lead1@x.com', () => tryq(`select class_set_zoom('c1', '{}')`));
 ok('팀장: 줌 링크 지우기', r.ok && (await zoomOf('c1')) === null, r.e);
 
+// 수업 삭제(폐강): 원장·총괄만
+await ins('classes', 'cdel', { name: '폐강반' });
+r = await as('lead1@x.com', () => tryq(`delete from items where collection='classes' and id='cdel'`));
+ok('팀장: 수업 삭제 못 함', r.ok && r.n === 0, r.e);
+r = await as('admin@x.com', () => tryq(`delete from items where collection='classes' and id='cdel'`));
+ok('원장: 수업 삭제', r.ok && r.n === 1, r.e);
+
 // 재실행 안전
 r = await db.exec(schema).then(() => ({ ok: true }), e => ({ ok: false, e: e.message }));
 ok('스크립트 두 번 실행해도 됨', r.ok, r.e);

@@ -509,8 +509,13 @@
       '1. 오늘: "챙겨야 할 학생"(면담 공백 · 후속 상담 · 할 일 지연 · 시험 접수 마감)을 먼저 확인해요.',
       '2. 학생 → + 학생 추가: 담당 학생을 등록하고, 수강 수업은 검색해서 체크해요.',
       '3. 학생 상세 → 상담 · 면담: 상담 후 바로 기록하고 다음 면담 일정을 잡아요.',
-      '4. 학생 상세 → 학생 링크 → 개강 안내: 개강일 · 출석일 · 학생 링크가 들어간 안내 문구를 복사해 학생에게 보내요. (수업 상세의 "개강 안내문"에서 그 수업 학생들 것을 한 번에 복사할 수 있어요)',
+      '4. 학생 상세 → 학생 링크: 링크를 복사해 학생에게 보내면 학생은 자기 학습 캘린더만 볼 수 있어요.',
       approver ? '5. 오늘 화면의 "삭제 요청"과 "다음 기수 연결"을 확인하고 승인·연결해 주세요.' : '5. 학생 삭제는 "삭제 요청"을 누르면 팀장 · 부장 · 원장이 승인해요.', '',
+      '■ 개강 안내문 보내기 (국비 과정 제외)',
+      '- 수업 → 수업을 눌러 상세 화면 → "개강 안내문"을 봐요. 개강 · 종강일, 수업시간, 과정, 강의장, 출석일이 시간표대로 자동으로 들어가 있어요.',
+      '- 오른쪽 학생 명단에서 "안내문 복사"를 누르고 그 학생 메신저에 붙여 넣으면 끝이에요. 학생마다 이름과 학생페이지 링크가 알아서 바뀌어요.',
+      '- 복사한 학생 옆에는 "복사함"이 붙어요. 고칠 내용이 있으면 "미리보기"에서 고친 뒤 복사하세요.',
+      '- 학생 상세 → 학생 링크 탭의 "개강 안내" 버튼으로도 보낼 수 있어요.', '',
       '■ 줌 링크 넣기 (수업 → 수업을 눌러 상세 화면)',
       '- 실시간 수업 줌: 강사님께 받은 초대 문구를 통째로 붙여 넣으면 링크 · 회의 ID · 암호가 알아서 나뉘어요. "줌 링크 저장"을 누르면 학생 캘린더에 "실시간 수업 참여" 버튼이 항상 보여요.',
       '- 이어지는 수업(예: 리눅스1 → 리눅스2)이 같은 링크를 쓰면 "이어지는 수업에도 같은 링크 넣기"를 체크한 채로 저장하세요.',
@@ -804,7 +809,7 @@
     const info = [['요일 · 시간', classTime(c)], ['기간', `${fmtFull(c.startDate)} ~ ${fmtFull(c.endDate)}`], ['강의실', c.room], ['강사', c.instructor], ['비고', c.note]].filter(x => x[1]);
     return `<a href="#/classes" class="faint" style="text-decoration:none">← 수업 목록</a>
     <div class="page-head" style="margin-top:10px"><div><h1>${esc(c.name)}</h1><p>${c.gov ? '<span class="pill blue">국비</span> ' : ''}${classEnded(c) ? '<span class="pill">종료</span>' : (c.startDate || '') > today() ? `<span class="pill amber">개강 ${dday(c.startDate)}</span>` : '<span class="pill green">진행 중</span>'}</p></div>
-      <div class="row">${(() => { const nx = nextCohort(c); return nx && roster.length ? `<button class="btn" data-act="class-next" data-id="${c.id}" title="${esc(nx.name)} ${fmt(nx.startDate)} 개강">다음 기수로 연결</button>` : ''; })()}<button class="btn" data-act="class-roster-csv" data-id="${c.id}">명단 엑셀 받기</button><button class="btn primary" data-act="class-link" data-id="${c.id}">학생 연결</button>${isLead() ? `<button class="btn" data-act="class-edit" data-id="${c.id}">수업 정보 수정</button>` : ''}</div></div>
+      <div class="row">${(() => { const nx = nextCohort(c); return nx && roster.length ? `<button class="btn" data-act="class-next" data-id="${c.id}" title="${esc(nx.name)} ${fmt(nx.startDate)} 개강">다음 기수로 연결</button>` : ''; })()}<button class="btn" data-act="class-roster-csv" data-id="${c.id}">명단 엑셀 받기</button><button class="btn primary" data-act="class-link" data-id="${c.id}">학생 연결</button>${isLead() ? `<button class="btn" data-act="class-edit" data-id="${c.id}">수업 정보 수정</button>` : ''}${isAdmin() ? `<button class="btn danger" data-act="class-del" data-id="${c.id}">폐강 · 삭제</button>` : ''}</div></div>
     <div class="grid g3" style="align-items:start">
       <section class="card"><div class="card-head"><h3>수업 정보</h3></div><div class="card-body"><div class="list">${info.map(([k, v]) => `<div class="li"><span class="faint" style="width:72px">${k}</span><div class="main" style="white-space:pre-wrap">${esc(v)}</div></div>`).join('')}</div></div></section>
       <section class="card span2 tbl-wrap"><div class="card-head"><h3>수강생 ${roster.length}명</h3><span class="faint">볼 수 있는 학생 기준</span></div><div class="card-body">
@@ -999,7 +1004,7 @@
     const isNew = !c.id;
     openModal(isNew ? '수업 추가' : '수업 정보 수정', classForm(c), {
       okText: isNew ? '추가' : '저장',
-      extra: isNew ? '' : `<button class="btn danger" data-act="class-del" data-id="${c.id}">삭제</button>`,
+      extra: isNew || !isAdmin() ? '' : `<button class="btn danger" data-act="class-del" data-id="${c.id}">폐강 · 삭제</button>`,
       onOk: async root => {
         const v = vals(root);
         if (!v.name) { toast('수업 이름을 넣어주세요'); return false; }
@@ -1517,10 +1522,13 @@
     'class-del': async el => {
       document.querySelectorAll('.modal-bg').forEach(m => m.remove());
       const c = Store.get('classes', el.dataset.id);
-      if (!(await confirmBox(`'${c.name}' 수업을 삭제할까요? 학생들과의 연결도 풀려요. 보통은 '종료 처리'를 권해요.`, '삭제'))) return;
+      if (!isAdmin()) return toast('수업 삭제는 원장 · 총괄만 할 수 있어요');
+      const linked = Store.all('students').filter(s => (s.classIds || []).includes(c.id)).length;
+      if (!(await confirmBox(`'${c.name}' (${fmt(c.startDate)} ~ ${fmt(c.endDate)}) 수업을 삭제할까요?\n폐강된 수업일 때 쓰세요. ${linked ? `연결된 학생 ${linked}명의 수업 연결이 풀리고, ` : ''}녹화본 · 줌 링크도 함께 지워지며 되돌릴 수 없어요.\n그냥 끝난 수업은 '수업 정보 수정 → 종료 처리'를 권해요.`, '삭제'))) return;
       for (const s of Store.all('students').filter(s => (s.classIds || []).includes(c.id))) { s.classIds = s.classIds.filter(x => x !== c.id); await Store.put('students', s); }
       await Store.del('classes', c.id);
-      await Store.log('delete', c.id, `수업 삭제: ${c.name}`);
+      await Store.log('delete', c.id, `수업 삭제(폐강): ${c.name} ${c.startDate || ''}`);
+      toast('수업을 삭제했어요');
       location.hash = '#/classes';
     },
     'class-link': el => linkStudents(Store.get('classes', el.dataset.id)),
