@@ -509,7 +509,7 @@
       '1. 오늘: "챙겨야 할 학생"(면담 공백 · 후속 상담 · 할 일 지연 · 시험 접수 마감)을 먼저 확인해요.',
       '2. 학생 → + 학생 추가: 담당 학생을 등록하고, 수강 수업은 검색해서 체크해요.',
       '3. 학생 상세 → 상담 · 면담: 상담 후 바로 기록하고 다음 면담 일정을 잡아요.',
-      '4. 학생 상세 → 학생 링크 → 개강 안내: 개강일 · 출석일 · 학생 링크가 들어간 안내 문구를 복사해 학생에게 보내요. (수업 상세의 수강생 명단에도 "개강 안내" 버튼이 있어요)',
+      '4. 학생 상세 → 학생 링크 → 개강 안내: 개강일 · 출석일 · 학생 링크가 들어간 안내 문구를 복사해 학생에게 보내요. (수업 상세의 "개강 안내문"에서 그 수업 학생들 것을 한 번에 복사할 수 있어요)',
       approver ? '5. 오늘 화면의 "삭제 요청"과 "다음 기수 연결"을 확인하고 승인·연결해 주세요.' : '5. 학생 삭제는 "삭제 요청"을 누르면 팀장 · 부장 · 원장이 승인해요.', '',
       '■ 줌 링크 넣기 (수업 → 수업을 눌러 상세 화면)',
       '- 실시간 수업 줌: 강사님께 받은 초대 문구를 통째로 붙여 넣으면 링크 · 회의 ID · 암호가 알아서 나뉘어요. "줌 링크 저장"을 누르면 학생 캘린더에 "실시간 수업 참여" 버튼이 항상 보여요.',
@@ -808,13 +808,29 @@
     <div class="grid g3" style="align-items:start">
       <section class="card"><div class="card-head"><h3>수업 정보</h3></div><div class="card-body"><div class="list">${info.map(([k, v]) => `<div class="li"><span class="faint" style="width:72px">${k}</span><div class="main" style="white-space:pre-wrap">${esc(v)}</div></div>`).join('')}</div></div></section>
       <section class="card span2 tbl-wrap"><div class="card-head"><h3>수강생 ${roster.length}명</h3><span class="faint">볼 수 있는 학생 기준</span></div><div class="card-body">
-        ${roster.length ? `<table class="tbl"><thead><tr><th>이름</th><th>상태</th><th>담당</th><th class="hide-m">최근 상담</th><th>다음 면담</th><th></th></tr></thead><tbody>
-        ${roster.map(s => { const ln = lastNote(s.id), nm = nextMeeting(s.id); return `<tr class="click" data-act="go" data-href="#/students/${s.id}"><td><b>${esc(s.name)}</b></td><td>${pill(statusOf(s.status))}</td><td style="white-space:nowrap">${esc(staffName(s.mentorId))}</td><td class="hide-m">${ln ? fmt(ln.date) : '<span class="faint">없음</span>'}</td><td>${nm ? fmt(nm.date) : '<span class="faint">-</span>'}</td><td style="text-align:right"><button class="btn sm" data-act="notice" data-sid="${s.id}" data-cid="${c.id}">개강 안내</button></td></tr>`; }).join('')}
+        ${roster.length ? `<table class="tbl"><thead><tr><th>이름</th><th>상태</th><th>담당</th><th class="hide-m">최근 상담</th><th>다음 면담</th></tr></thead><tbody>
+        ${roster.map(s => { const ln = lastNote(s.id), nm = nextMeeting(s.id); return `<tr class="click" data-act="go" data-href="#/students/${s.id}"><td><b>${esc(s.name)}</b></td><td>${pill(statusOf(s.status))}</td><td style="white-space:nowrap">${esc(staffName(s.mentorId))}</td><td class="hide-m">${ln ? fmt(ln.date) : '<span class="faint">없음</span>'}</td><td>${nm ? fmt(nm.date) : '<span class="faint">-</span>'}</td></tr>`; }).join('')}
         </tbody></table>` : '<div class="empty">아직 연결된 학생이 없어요. "학생 연결"을 눌러 고르세요.</div>'}
       </div></section>
     </div>
+    ${noticeCard(c, roster)}
     ${zoomCard(c)}
     ${recordingsCard(c)}`;
+  }
+  // 이 수업 학생들에게 보낼 개강 안내문: 시간표(개강·종강·시간·강의장·출석일)로 자동 작성, 학생마다 링크만 달라짐
+  const noticeCopied = new Set();
+  function noticeCard(c, roster) {
+    if (!roster.length) return '';
+    const lines = openingNotice({ name: 'OOO', token: '' }, c).split('\n').slice(1, 8);
+    return `<section class="card" style="margin-top:16px"><div class="card-head"><h3>개강 안내문</h3><span class="faint">이 수업 시간표로 자동 작성돼요 · 학생마다 이름과 학생페이지 링크만 바뀌어요</span></div>
+      <div class="card-body"><div class="grid g2" style="align-items:start">
+        <pre style="margin:0;white-space:pre-wrap;font:inherit;font-size:13px;background:var(--surface-2, #f6f5f0);border-radius:10px;padding:12px">${esc(lines.join('\n'))}</pre>
+        <div><div class="list">${roster.map(s => `<div class="li"><div class="main"><div class="t">${esc(s.name)}</div><div class="faint">${esc(staffName(s.mentorId))} 담당</div></div>
+          ${noticeCopied.has(c.id + s.id) ? '<span class="pill green">복사함</span>' : ''}
+          <button class="btn sm" data-act="notice" data-sid="${s.id}" data-cid="${c.id}">미리보기</button>
+          <button class="btn sm primary" data-act="notice-copy" data-sid="${s.id}" data-cid="${c.id}">안내문 복사</button></div>`).join('')}</div>
+        <p class="faint" style="margin-bottom:0">"안내문 복사"를 누르고 학생 메신저에 바로 붙여 넣으세요. 고칠 부분이 있으면 "미리보기"에서 고친 뒤 복사하세요.</p></div>
+      </div></div></section>`;
   }
   // 줌 초대 문구에서 링크·회의 ID·암호 뽑기
   function parseZoomInvite(text) {
@@ -1336,6 +1352,14 @@
     'import-open': () => openImport(),
     'import-template': () => importTemplate(),
     notice: el => openNotice(Store.get('students', el.dataset.sid), Store.get('classes', el.dataset.cid)),
+    'notice-copy': async el => {
+      const st = Store.get('students', el.dataset.sid), c = Store.get('classes', el.dataset.cid);
+      await copy(openingNotice(st, c));
+      toast(`${st.name}님 개강 안내문을 복사했어요`);
+      noticeCopied.add(c.id + st.id);
+      const row = el.closest('.li');
+      if (row && !row.querySelector('.pill.green')) el.insertAdjacentHTML('beforebegin', '<span class="pill green">복사함</span> ');
+    },
     'staff-guide': el => {
       const p = Store.get('staff', el.dataset.id);
       const text = guideText(p);
