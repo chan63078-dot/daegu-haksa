@@ -509,7 +509,7 @@
       '1. 오늘: "챙겨야 할 학생"(면담 공백 · 후속 상담 · 할 일 지연 · 시험 접수 마감)을 먼저 확인해요.',
       '2. 학생 → + 학생 추가: 담당 학생을 등록하고, 수강 수업은 검색해서 체크해요.',
       '3. 학생 상세 → 상담 · 면담: 상담 후 바로 기록하고 다음 면담 일정을 잡아요.',
-      '4. 학생 상세 → 학생 링크: 링크를 복사해 학생에게 보내면 학생은 자기 학습 캘린더만 볼 수 있어요.',
+      '4. 학생 상세 → 학생 링크 → 개강 안내: 개강일 · 출석일 · 학생 링크가 들어간 안내 문구를 복사해 학생에게 보내요. (수업 상세의 수강생 명단에도 "개강 안내" 버튼이 있어요)',
       approver ? '5. 오늘 화면의 "삭제 요청"과 "다음 기수 연결"을 확인하고 승인·연결해 주세요.' : '5. 학생 삭제는 "삭제 요청"을 누르면 팀장 · 부장 · 원장이 승인해요.', '',
       '■ 줌 링크 넣기 (수업 → 수업을 눌러 상세 화면)',
       '- 실시간 수업 줌: 강사님께 받은 초대 문구를 통째로 붙여 넣으면 링크 · 회의 ID · 암호가 알아서 나뉘어요. "줌 링크 저장"을 누르면 학생 캘린더에 "실시간 수업 참여" 버튼이 항상 보여요.',
@@ -659,14 +659,53 @@
       </div></div></section>`;
   }
 
+  // 학생에게 보내는 개강 안내 문구 (수업 하나 기준)
+  function openingNotice(s, c) {
+    const p2 = n => String(n).padStart(2, '0');
+    const md = d => d ? `${p2(d.slice(5, 7))}.${p2(d.slice(8, 10))}` : '-';
+    const room = String(c.room || '').trim();
+    const rm = room.match(/^([A-Za-z0-9가-힣]+)\s*\[(.+)\]$/);
+    const roomText = !room ? '-' : rm ? (/층$/.test(rm[2]) ? `${rm[2]} ${rm[1]}강의장` : rm[2]) : room;
+    const days = U.sessions(c).map(d => `${Number(d.slice(5, 7))}-${Number(d.slice(8, 10))} ${DAYS[U.dow(d)]}`).join(' ');
+    return ['<개강안내>',
+      `개강월일 : ${md(c.startDate)}`,
+      `종강월일 : ${md(c.endDate)}`,
+      `수업시간 : ${c.start || ''} ~ ${c.end || ''}`,
+      `배정과정 : ${String(c.name || '').replace(/\s·\s.*$/, '')}`,
+      `실강의장 : ${roomText}`,
+      '특이사항 : 출석일 참고하여 수강 참여 바랍니다 :) ',
+      `출   석  일 : ${days || '-'}`,
+      `${s.name}님 학생페이지 : ${studentLink(s)}`,
+      '',
+      '※ 줌 링크는 수업 전일 수강생 페이지에서 확인 가능합니다.',
+      '',
+      '[학생페이지 이용 방법]',
+      '- 링크를 열면 내 수업 일정이 달력으로 보여요. 날짜를 누르면 그날 수업과 할 일이 나와요.',
+      "- 실시간 수업은 '실시간 수업 참여' 버튼을 눌러 들어가요. 회의 ID와 암호도 함께 적혀 있어요.",
+      "- 지난 수업 날짜를 누르면 '녹화본 보기'와 암호가 보여요. 녹화본은 일주일 동안만 볼 수 있어요.",
+      "- 휴대폰에서 링크를 열고 '홈 화면에 추가'하면 앱처럼 바로 열 수 있어요.",
+      '- 이 링크는 본인 전용이니 다른 사람에게 공유하지 마세요.'].join('\n');
+  }
+  function openNotice(s, c) {
+    openModal(`${s.name}님 개강 안내`, `<p class="faint" style="margin-top:0">메신저로 보낼 문구예요. 보내기 전에 고칠 부분이 있으면 아래에서 바로 고친 뒤 복사하세요.</p><textarea class="in" id="notice-text" style="min-height:360px">${esc(openingNotice(s, c))}</textarea>`, {
+      wide: true,
+      extra: '<button class="btn primary" data-act="copy-notice">문구 복사</button>',
+      onOpen: bg => { bg.querySelector('[data-act="copy-notice"]').onclick = e => { e.stopPropagation(); copy(bg.querySelector('#notice-text').value).then(() => toast('개강 안내 문구를 복사했어요')); }; }
+    });
+  }
+
   function stuLink(s) {
     const url = studentLink(s);
+    const myClasses = sortBy(Store.all('classes').filter(c => (s.classIds || []).includes(c.id)), c => (classEnded(c) ? '1' : '0') + (c.startDate || ''));
     return `<div class="grid g2" style="align-items:start">
       <section class="card"><div class="card-head"><h3>학생 전용 링크</h3></div><div class="card-body">
         <p class="muted" style="margin-top:0">이 링크를 받은 학생은 로그인 없이 <b>본인의 수업 일정, 로드맵, 시험, 할 일, 출석률</b>만 볼 수 있어요. 연락처와 상담 기록은 보이지 않아요.</p>
         <input class="in" readonly value="${esc(url)}" onclick="this.select()">
         <div class="row" style="margin-top:10px"><button class="btn primary" data-act="copy" data-v="${esc(url)}">링크 복사</button><a class="btn" href="${esc(url)}" target="_blank" rel="noopener">열어보기</a><button class="btn danger" data-act="token-new" data-id="${s.id}">새 링크 만들기</button></div>
         <p class="faint">링크가 다른 사람에게 퍼졌거나 수료한 학생이면 새 링크를 만드세요. 이전 링크는 바로 막혀요.</p>
+      </div></section>
+      <section class="card"><div class="card-head"><h3>개강 안내 문구</h3><span class="faint">수업을 고르면 날짜 · 시간 · 강의장 · 출석일 · 학생 링크가 들어간 문구가 만들어져요</span></div><div class="card-body">
+        ${myClasses.length ? `<div class="list">${myClasses.map(c => `<div class="li"><div class="main"><div class="t">${esc(c.name)}</div><div class="faint">${fmt(c.startDate)} ~ ${fmt(c.endDate)} · ${esc(classTime(c))}${classEnded(c) ? ' · 종료' : ''}</div></div><button class="btn sm primary" data-act="notice" data-sid="${s.id}" data-cid="${c.id}">개강 안내</button></div>`).join('')}</div>` : '<div class="faint">연결된 수업이 없어요. 수업 탭에서 먼저 수업을 연결해 주세요.</div>'}
       </div></section>
       ${canDeleteStudent(s) || canRequestDelete(s) ? `<section class="card"><div class="card-head"><h3>학생 삭제</h3></div><div class="card-body">
         ${s.deleteRequest ? `<p class="pill red" style="height:auto;padding:6px 10px;margin:0 0 10px">삭제 요청 · ${esc(s.deleteRequest.byName || '')} · ${fmtFull(s.deleteRequest.at)}<br>사유: ${esc(s.deleteRequest.reason || '-')}</p>` : ''}
@@ -769,8 +808,8 @@
     <div class="grid g3" style="align-items:start">
       <section class="card"><div class="card-head"><h3>수업 정보</h3></div><div class="card-body"><div class="list">${info.map(([k, v]) => `<div class="li"><span class="faint" style="width:72px">${k}</span><div class="main" style="white-space:pre-wrap">${esc(v)}</div></div>`).join('')}</div></div></section>
       <section class="card span2 tbl-wrap"><div class="card-head"><h3>수강생 ${roster.length}명</h3><span class="faint">볼 수 있는 학생 기준</span></div><div class="card-body">
-        ${roster.length ? `<table class="tbl"><thead><tr><th>이름</th><th>상태</th><th>담당</th><th class="hide-m">최근 상담</th><th>다음 면담</th></tr></thead><tbody>
-        ${roster.map(s => { const ln = lastNote(s.id), nm = nextMeeting(s.id); return `<tr class="click" data-act="go" data-href="#/students/${s.id}"><td><b>${esc(s.name)}</b></td><td>${pill(statusOf(s.status))}</td><td style="white-space:nowrap">${esc(staffName(s.mentorId))}</td><td class="hide-m">${ln ? fmt(ln.date) : '<span class="faint">없음</span>'}</td><td>${nm ? fmt(nm.date) : '<span class="faint">-</span>'}</td></tr>`; }).join('')}
+        ${roster.length ? `<table class="tbl"><thead><tr><th>이름</th><th>상태</th><th>담당</th><th class="hide-m">최근 상담</th><th>다음 면담</th><th></th></tr></thead><tbody>
+        ${roster.map(s => { const ln = lastNote(s.id), nm = nextMeeting(s.id); return `<tr class="click" data-act="go" data-href="#/students/${s.id}"><td><b>${esc(s.name)}</b></td><td>${pill(statusOf(s.status))}</td><td style="white-space:nowrap">${esc(staffName(s.mentorId))}</td><td class="hide-m">${ln ? fmt(ln.date) : '<span class="faint">없음</span>'}</td><td>${nm ? fmt(nm.date) : '<span class="faint">-</span>'}</td><td style="text-align:right"><button class="btn sm" data-act="notice" data-sid="${s.id}" data-cid="${c.id}">개강 안내</button></td></tr>`; }).join('')}
         </tbody></table>` : '<div class="empty">아직 연결된 학생이 없어요. "학생 연결"을 눌러 고르세요.</div>'}
       </div></section>
     </div>
@@ -1296,6 +1335,7 @@
     'student-new': () => newStudent(),
     'import-open': () => openImport(),
     'import-template': () => importTemplate(),
+    notice: el => openNotice(Store.get('students', el.dataset.sid), Store.get('classes', el.dataset.cid)),
     'staff-guide': el => {
       const p = Store.get('staff', el.dataset.id);
       const text = guideText(p);
