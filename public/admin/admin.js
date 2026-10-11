@@ -696,7 +696,7 @@
 
   function stuLink(s) {
     const url = studentLink(s);
-    const myClasses = sortBy(Store.all('classes').filter(c => (s.classIds || []).includes(c.id)), c => (classEnded(c) ? '1' : '0') + (c.startDate || ''));
+    const myClasses = sortBy(Store.all('classes').filter(c => (s.classIds || []).includes(c.id) && !c.gov), c => (classEnded(c) ? '1' : '0') + (c.startDate || ''));
     return `<div class="grid g2" style="align-items:start">
       <section class="card"><div class="card-head"><h3>학생 전용 링크</h3></div><div class="card-body">
         <p class="muted" style="margin-top:0">이 링크를 받은 학생은 로그인 없이 <b>본인의 수업 일정, 로드맵, 시험, 할 일, 출석률</b>만 볼 수 있어요. 연락처와 상담 기록은 보이지 않아요.</p>
@@ -705,7 +705,7 @@
         <p class="faint">링크가 다른 사람에게 퍼졌거나 수료한 학생이면 새 링크를 만드세요. 이전 링크는 바로 막혀요.</p>
       </div></section>
       <section class="card"><div class="card-head"><h3>개강 안내 문구</h3><span class="faint">수업을 고르면 날짜 · 시간 · 강의장 · 출석일 · 학생 링크가 들어간 문구가 만들어져요</span></div><div class="card-body">
-        ${myClasses.length ? `<div class="list">${myClasses.map(c => `<div class="li"><div class="main"><div class="t">${esc(c.name)}</div><div class="faint">${fmt(c.startDate)} ~ ${fmt(c.endDate)} · ${esc(classTime(c))}${classEnded(c) ? ' · 종료' : ''}</div></div><button class="btn sm primary" data-act="notice" data-sid="${s.id}" data-cid="${c.id}">개강 안내</button></div>`).join('')}</div>` : '<div class="faint">연결된 수업이 없어요. 수업 탭에서 먼저 수업을 연결해 주세요.</div>'}
+        ${myClasses.length ? `<div class="list">${myClasses.map(c => `<div class="li"><div class="main"><div class="t">${esc(c.name)}</div><div class="faint">${fmt(c.startDate)} ~ ${fmt(c.endDate)} · ${esc(classTime(c))}${classEnded(c) ? ' · 종료' : ''}</div></div><button class="btn sm primary" data-act="notice" data-sid="${s.id}" data-cid="${c.id}">개강 안내</button></div>`).join('')}</div>` : '<div class="faint">개강 안내문을 보낼 수업이 없어요. (국비 과정은 안내문이 없어요)</div>'}
       </div></section>
       ${canDeleteStudent(s) || canRequestDelete(s) ? `<section class="card"><div class="card-head"><h3>학생 삭제</h3></div><div class="card-body">
         ${s.deleteRequest ? `<p class="pill red" style="height:auto;padding:6px 10px;margin:0 0 10px">삭제 요청 · ${esc(s.deleteRequest.byName || '')} · ${fmtFull(s.deleteRequest.at)}<br>사유: ${esc(s.deleteRequest.reason || '-')}</p>` : ''}
@@ -820,7 +820,7 @@
   // 이 수업 학생들에게 보낼 개강 안내문: 시간표(개강·종강·시간·강의장·출석일)로 자동 작성, 학생마다 링크만 달라짐
   const noticeCopied = new Set();
   function noticeCard(c, roster) {
-    if (!roster.length) return '';
+    if (!roster.length || c.gov) return '';  // 국비 과정은 개강 안내문을 보내지 않음
     const lines = openingNotice({ name: 'OOO', token: '' }, c).split('\n').slice(1, 8);
     return `<section class="card" style="margin-top:16px"><div class="card-head"><h3>개강 안내문</h3><span class="faint">이 수업 시간표로 자동 작성돼요 · 학생마다 이름과 학생페이지 링크만 바뀌어요</span></div>
       <div class="card-body"><div class="grid g2" style="align-items:start">
