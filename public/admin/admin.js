@@ -734,8 +734,8 @@
     <div class="grid g3">${list.map(c => {
       const n = studs.filter(s => (s.classIds || []).includes(c.id) && ONGOING.includes(s.status)).length;
       const on = U.classOn(c, t);
-      return `<a class="card class-card ${esc(c.color || 'gray')}" href="#/classes/${c.id}">
-        <div class="row">${on ? '<span class="pill accent" style="background:var(--accent);color:#fff">오늘 수업</span>' : ''}${c.gov ? '<span class="pill blue">국비</span>' : ''}${classEnded(c) ? '<span class="pill">종료</span>' : (c.startDate || '') > t ? '<span class="pill amber">개강 예정</span>' : ''}</div>
+      return `<a class="card class-card ${esc(c.color || 'gray')}${c.campus ? ' campus' : ''}" href="#/classes/${c.id}">
+        <div class="row">${on ? '<span class="pill accent" style="background:var(--accent);color:#fff">오늘 수업</span>' : ''}${c.campus ? '<span class="pill green">AI캠퍼스</span>' : ''}${c.gov ? '<span class="pill blue">국비</span>' : ''}${classEnded(c) ? '<span class="pill">종료</span>' : (c.startDate || '') > t ? '<span class="pill amber">개강 예정</span>' : ''}</div>
         <h3>${esc(c.name)}</h3>
         <div class="faint">${classTime(c)} · ${esc(c.room || '')}${c.instructor ? ' · ' + esc(c.instructor) + ' 강사' : ''}</div>
         <div class="faint">${fmt(c.startDate)} ~ ${fmt(c.endDate)}</div>
@@ -787,7 +787,7 @@
       const top = (toMin(c.start) - startMin) / SLOT * PX, h = Math.max((toMin(c.end) - toMin(c.start)) / SLOT * PX - 3, 22);
       const n = studs.filter(s => (s.classIds || []).includes(c.id)).length;
       const live = U.classOn(c, t);
-      return `<a class="tt-block ${c.gov ? 'gov' : ''} ${classEnded(c) ? 'ended' : ''}" href="#/classes/${c.id}" style="top:${top}px;height:${h}px" title="${esc(c.name)}\n${esc(classTime(c))}\n${esc(classPeriod(c))}${c.instructor ? '\n' + esc(c.instructor) + ' 강사' : ''}">
+      return `<a class="tt-block ${c.campus ? 'campus' : c.gov ? 'gov' : ''} ${classEnded(c) ? 'ended' : ''}" href="#/classes/${c.id}" style="top:${top}px;height:${h}px" title="${esc(c.name)}\n${esc(classTime(c))}\n${esc(classPeriod(c))}${c.instructor ? '\n' + esc(c.instructor) + ' 강사' : ''}">
         <b>${live ? '<i class="tt-dot"></i>' : ''}${esc(c.name)}</b>
         <span>${esc(c.room || '')}${c.instructor ? ' | ' + esc(c.instructor) : ''}</span>
         ${h > 70 ? `<span>${esc(c.start)}~${esc(c.end)} · ${(c.days || []).map(d => DAYS[d]).join('')}</span><span>${classPeriod(c)}${n ? ` · ${n}명` : ''}</span>` : ''}
@@ -799,7 +799,7 @@
       <div class="tt-times" style="height:${height}px">${times.map(m => `<div style="height:${PX}px" class="${m % 60 ? 'half' : ''}">${hhmm(m)}</div>`).join('')}</div>
       ${cols.map(col => `<div class="tt-col ${col.first ? 'first' : ''}" style="height:${height}px;background-size:100% ${PX * 2}px">${col.items.map(block).join('')}</div>`).join('')}
     </div></div>
-    <p class="faint">점(●)은 오늘 수업이 있는 반이에요. 분홍은 국비 과정이고, 막대를 누르면 수업 상세로 가요. 같은 강의실에서 시간이 겹치는 반은 옆 칸에 나뉘어 보여요.</p>`;
+    <p class="faint">점(●)은 오늘 수업이 있는 반이에요. 분홍은 국비 과정, 초록은 AI캠퍼스(비대면) 과정이고, 막대를 누르면 수업 상세로 가요. 같은 강의실에서 시간이 겹치는 반은 옆 칸에 나뉘어 보여요.</p>`;
   }
 
   function pageClass(id) {
@@ -808,7 +808,7 @@
     const roster = sortBy(students().filter(s => (s.classIds || []).includes(c.id)), s => s.name);
     const info = [['요일 · 시간', classTime(c)], ['기간', `${fmtFull(c.startDate)} ~ ${fmtFull(c.endDate)}`], ['강의실', c.room], ['강사', c.instructor], ['비고', c.note]].filter(x => x[1]);
     return `<a href="#/classes" class="faint" style="text-decoration:none">← 수업 목록</a>
-    <div class="page-head" style="margin-top:10px"><div><h1>${esc(c.name)}</h1><p>${c.gov ? '<span class="pill blue">국비</span> ' : ''}${classEnded(c) ? '<span class="pill">종료</span>' : (c.startDate || '') > today() ? `<span class="pill amber">개강 ${dday(c.startDate)}</span>` : '<span class="pill green">진행 중</span>'}</p></div>
+    <div class="page-head" style="margin-top:10px"><div><h1>${esc(c.name)}</h1><p>${c.campus ? '<span class="pill green">AI캠퍼스 · 비대면</span> ' : ''}${c.gov ? '<span class="pill blue">국비</span> ' : ''}${classEnded(c) ? '<span class="pill">종료</span>' : (c.startDate || '') > today() ? `<span class="pill amber">개강 ${dday(c.startDate)}</span>` : '<span class="pill green">진행 중</span>'}</p></div>
       <div class="row">${(() => { const nx = nextCohort(c); return nx && roster.length ? `<button class="btn" data-act="class-next" data-id="${c.id}" title="${esc(nx.name)} ${fmt(nx.startDate)} 개강">다음 기수로 연결</button>` : ''; })()}<button class="btn" data-act="class-roster-csv" data-id="${c.id}">명단 엑셀 받기</button><button class="btn primary" data-act="class-link" data-id="${c.id}">학생 연결</button>${isLead() ? `<button class="btn" data-act="class-edit" data-id="${c.id}">수업 정보 수정</button>` : ''}${isAdmin() ? `<button class="btn danger" data-act="class-del" data-id="${c.id}">폐강 · 삭제</button>` : ''}</div></div>
     <div class="grid g3" style="align-items:start">
       <section class="card"><div class="card-head"><h3>수업 정보</h3></div><div class="card-body"><div class="list">${info.map(([k, v]) => `<div class="li"><span class="faint" style="width:72px">${k}</span><div class="main" style="white-space:pre-wrap">${esc(v)}</div></div>`).join('')}</div></div></section>
@@ -932,6 +932,7 @@
       ${field('비고', input('note', c.note, 'placeholder="예: 휴강 8/17, 격주 요일"'), 'full')}
       ${field('색상', `<select class="in" name="color">${colors.map(([k, l]) => opt(k, l, c.color || 'green')).join('')}</select>`)}
       <label class="check"><input type="checkbox" name="gov" ${c.gov ? 'checked' : ''}>국비 과정</label>
+      <label class="check"><input type="checkbox" name="campus" ${c.campus ? 'checked' : ''}>AI캠퍼스 (비대면 AI 전용, 시간표에 초록색)</label>
       <label class="check"><input type="checkbox" name="archived" ${c.archived ? 'checked' : ''}>종료 처리 (종강일 전이라도 목록에서 숨김)</label>
     </div>`;
   }
