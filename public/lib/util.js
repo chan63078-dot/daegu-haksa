@@ -140,8 +140,18 @@
     });
     return groups.length > 1 ? groups.map(g => g.map(ch => DAYS.indexOf(ch))) : null;
   }
+  // 비고에 "수업일: 09/15,17,22, 10/01,06" 처럼 실제 날짜가 적혀 있으면 그 날짜가 정답
+  function listedDates(note, startDate) {
+    const m = String(note || '').match(/수업일\s*:\s*([\d\/,\s~]+)/);
+    if (!m) return null;
+    const fake = '휴강: ' + m[1].trim();
+    const set = offDates(fake, startDate);
+    return set.size ? set : null;
+  }
   function sessions(c) {
     if (!c.startDate || !c.endDate || !(c.days || []).length) return [];
+    const listed = listedDates(c.note, c.startDate);
+    if (listed) return Array.from(listed).filter(d => d >= c.startDate && d <= c.endDate).sort();
     const off = offDates(c.note, c.startDate);
     const pats = weekPatterns(c.note);
     const week0 = addDays(c.startDate, -((dow(c.startDate) + 6) % 7));
