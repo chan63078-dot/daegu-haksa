@@ -193,6 +193,7 @@
     ['home', '#/', '오늘'],
     ['students', '#/students', '학생'],
     ['classes', '#/classes', '수업'],
+    ['branches', '#/branches', '타지점 시간표'],
     ['exams', '#/exams', '시험 일정'],
     ['report', '#/report', '리포트'],
     ['settings', '#/settings', '설정']
@@ -743,9 +744,39 @@
     }).join('') || `<div class="card empty" style="grid-column:1/-1">${ui.classArchived ? '끝난 수업이 없어요' : `아직 수업이 없어요.${isLead() ? '<br>매달 받는 "IT대구 ○월 평일/주말 강의 시간표" 파일을 <b>시간표 파일로 등록</b>에 올리면 한꺼번에 들어가요.' : ''}`}</div>`}</div>`;
   }
 
+  // ---------- 타지점 시간표 (보기 전용, 팀장 이상이 시간표 파일로 갱신) ----------
+  const BRANCHES = ['AI강남', 'AI신촌', 'AI부산'];
+  function pageBranches(branch) {
+    const t = today();
+    branch = BRANCHES.includes(branch) ? branch : BRANCHES[0];
+    const all = Store.all('branchClasses');
+    const list = all.filter(c => c.branch === branch);
+    const view = ui.branchView || 'grid';
+    const head = `<div class="page-head"><div><h1>타지점 시간표</h1><p>다른 지점 수업을 시간표로 봐요 (보기 전용)</p></div>
+      <div class="row"><div class="seg"><button class="${view === 'grid' ? 'on present' : ''}" data-act="branch-view" data-v="grid">시간표</button><button class="${view === 'list' ? 'on present' : ''}" data-act="branch-view" data-v="list">목록</button></div>
+      ${isLead() ? `<button class="btn" data-act="branch-import" data-v="${esc(branch)}">${esc(branch)} 시간표 파일로 등록</button>` : ''}</div></div>
+      <div class="chips" style="margin-bottom:16px">${BRANCHES.map(b => `<a class="chip ${b === branch ? 'on' : ''}" href="#/branches/${encodeURIComponent(b)}" style="text-decoration:none">${esc(b)}<b>${all.filter(c => c.branch === b && !classEnded(c)).length}</b></a>`).join('')}</div>`;
+    if (!list.length) return head + `<div class="card empty">${esc(branch)} 시간표가 아직 없어요.${isLead() ? '<br>그룹웨어에서 받은 시간표 파일을 올리거나, 담당자에게 등록을 부탁하세요.' : ''}</div>`;
+    const updated = list.map(c => c.updatedAt || '').sort().pop();
+    const foot = `<p class="faint">${updated ? `마지막 갱신 ${fmtFull(updated)} · ` : ''}수업 이름을 누르면 회차 날짜를 볼 수 있어요.</p>`;
+    if (view === 'grid') return head + classGrid(list, { readonly: true }) + foot;
+    const rows = sortBy(list.filter(c => !classEnded(c)), c => (c.startDate || '') + c.start + c.name);
+    return head + `<div class="card tbl-wrap"><table class="tbl"><thead><tr><th>수업</th><th>요일 · 시간</th><th>기간</th><th>강의실</th><th>강사</th><th>회차</th>${isLead() ? '<th></th>' : ''}</tr></thead><tbody>
+      ${rows.map(c => `<tr class="click" data-act="branch-class" data-id="${c.id}"><td><b>${esc(c.name)}</b>${c.gov ? ' <span class="pill blue">국비</span>' : ''}${(c.startDate || '') > t ? ' <span class="pill amber">개강 예정</span>' : ''}</td>
+        <td style="white-space:nowrap">${classTime(c)}</td><td style="white-space:nowrap">${classPeriod(c)}</td><td>${esc(c.room || '')}</td><td>${esc(c.instructor || '-')}</td><td>${U.sessions(c).length}회</td>
+        ${isLead() ? `<td><button class="btn sm ghost" data-act="branch-del" data-id="${c.id}" title="삭제">삭제</button></td>` : ''}</tr>`).join('') || '<tr><td colspan="7" class="empty">진행 중이거나 예정인 수업이 없어요</td></tr>'}
+    </tbody></table></div>` + foot;
+  }
+  function branchClassInfo(c) {
+    const ss = U.sessions(c);
+    openModal(`${c.branch} · ${c.name}`, `<div class="list">${[['요일 · 시간', classTime(c)], ['기간', `${fmtFull(c.startDate)} ~ ${fmtFull(c.endDate)}`], ['강의실', esc(c.room || '')], ['강사', esc(c.instructor || '-')], ['비고', esc(c.note || '')]].filter(x => x[1]).map(([k, v]) => `<div class="li"><span class="faint" style="width:72px">${k}</span><div class="main">${v}</div></div>`).join('')}</div>
+      <p style="margin:14px 0 6px"><b>회차 ${ss.length}회</b></p><p class="faint" style="margin:0">${ss.map((d, i) => `${i + 1}) ${fmt(d)}`).join(' · ') || '요일과 기간이 있어야 회차가 계산돼요'}</p>`);
+  }
+
   // ---------- 시간표 보기 (강의실 × 시간, 막대) ----------
   const toMin = t => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
-  function classGrid(all) {
+  function classGrid(all, opts) {
+    opts = opts || {};
     const t = today();
     const month = ui.gridMonth || t.slice(0, 7);
     const [yy, mm] = month.split('-').map(Number);
@@ -785,13 +816,13 @@
 
     const block = c => {
       const top = (toMin(c.start) - startMin) / SLOT * PX, h = Math.max((toMin(c.end) - toMin(c.start)) / SLOT * PX - 3, 22);
-      const n = studs.filter(s => (s.classIds || []).includes(c.id)).length;
+      const n = opts.readonly ? 0 : studs.filter(s => (s.classIds || []).includes(c.id)).length;
       const live = U.classOn(c, t);
-      return `<a class="tt-block ${c.campus ? 'campus' : c.gov ? 'gov' : ''} ${classEnded(c) ? 'ended' : ''}" href="#/classes/${c.id}" style="top:${top}px;height:${h}px" title="${esc(c.name)}\n${esc(classTime(c))}\n${esc(classPeriod(c))}${c.instructor ? '\n' + esc(c.instructor) + ' 강사' : ''}">
+      return `<${opts.readonly ? 'div' : 'a'} class="tt-block ${c.campus ? 'campus' : c.gov ? 'gov' : ''} ${classEnded(c) ? 'ended' : ''}" ${opts.readonly ? `data-act="branch-class" data-id="${c.id}" role="button"` : `href="#/classes/${c.id}"`} style="top:${top}px;height:${h}px" title="${esc(c.name)}\n${esc(classTime(c))}\n${esc(classPeriod(c))}${c.instructor ? '\n' + esc(c.instructor) + ' 강사' : ''}">
         <b>${live ? '<i class="tt-dot"></i>' : ''}${esc(c.name)}</b>
         <span>${esc(c.room || '')}${c.instructor ? ' | ' + esc(c.instructor) : ''}</span>
         ${h > 70 ? `<span>${esc(c.start)}~${esc(c.end)} · ${(c.days || []).map(d => DAYS[d]).join('')}</span><span>${classPeriod(c)}${n ? ` · ${n}명` : ''}</span>` : ''}
-      </a>`;
+      </${opts.readonly ? 'div' : 'a'}>`;
     };
     return nav + `<div class="tt-wrap card"><div class="tt" style="grid-template-columns:56px repeat(${cols.length}, minmax(150px, 1fr))">
       <div class="tt-corner"></div>
@@ -943,11 +974,12 @@
     if (+String(c.start).split(':')[0] >= 18) return 'blue';
     return 'amber';
   }
-  function openClassImport() {
+  function openClassImport(branch) {
     let items = [];
     const t = today();
-    const existing = Store.all('classes');
-    const bg = openModal('시간표 파일로 수업 등록', `
+    const col = branch ? 'branchClasses' : 'classes';
+    const existing = Store.all(col).filter(x => !branch || x.branch === branch);
+    const bg = openModal(branch ? `${branch} 시간표 파일로 등록` : '시간표 파일로 수업 등록', `
       <p class="muted" style="margin-top:0">학원 시스템에서 받은 <b>"IT대구 ○월 평일/주말 강의 시간표"</b> CSV를 그대로 올리세요. 평일·주말 두 파일을 같이 골라도 돼요.</p>
       <div class="row"><label class="btn primary">파일 고르기<input type="file" accept=".csv,text/csv" multiple id="tt-file" hidden></label><button class="btn" data-tt-template>직접 쓸 양식 받기</button></div>
       <div id="tt-preview" style="margin-top:14px"></div>`, {
@@ -957,9 +989,9 @@
         const pick = items.filter((x, i) => root.querySelector(`[data-tt="${i}"]`)?.checked);
         if (!pick.length) { toast('등록할 수업을 골라주세요'); return false; }
         for (const c of pick) {
-          await Store.put('classes', { name: c.name, days: c.days, start: c.start, end: c.end, startDate: c.startDate, endDate: c.endDate, room: c.room, instructor: c.instructor, note: [c.note, c.endGuessed ? '끝 시간 추정' : ''].filter(Boolean).join(' / '), gov: c.gov, color: classColor(c) });
+          await Store.put(col, Object.assign({ name: c.name, days: c.days, start: c.start, end: c.end, startDate: c.startDate, endDate: c.endDate, room: c.room, instructor: c.instructor, note: [c.note, c.endGuessed ? '끝 시간 추정' : ''].filter(Boolean).join(' / '), gov: c.gov, color: classColor(c) }, branch ? { branch } : {}));
         }
-        await Store.log('class-import', '', `시간표 파일로 수업 ${pick.length}개 등록`);
+        await Store.log('class-import', '', `${branch ? branch + ' ' : ''}시간표 파일로 수업 ${pick.length}개 등록`);
         toast(`수업 ${pick.length}개를 등록했어요`);
         render();
       }
@@ -1323,6 +1355,7 @@
     else if (p0 === 'students') html = pageStudents();
     else if (p0 === 'classes' && p1) html = pageClass(p1);
     else if (p0 === 'classes') html = pageClasses();
+    else if (p0 === 'branches') html = pageBranches(p1 && decodeURIComponent(p1));
     else if (p0 === 'exams') html = pageExams();
     else if (p0 === 'report') html = pageReport();
     else if (p0 === 'settings') html = pageSettings();
@@ -1507,6 +1540,14 @@
     'class-arch': el => { ui.classArchived = el.dataset.v === '1'; render(); },
     'class-view': el => { ui.classView = el.dataset.v; try { localStorage.setItem('haksa-class-view', ui.classView); } catch (e) {} render(); },
     'grid-kind': el => { ui.gridKind = el.dataset.v; render(); },
+    'branch-view': el => { ui.branchView = el.dataset.v; render(); },
+    'branch-import': el => openClassImport(el.dataset.v),
+    'branch-class': el => branchClassInfo(Store.get('branchClasses', el.dataset.id)),
+    'branch-del': async el => {
+      const c = Store.get('branchClasses', el.dataset.id);
+      if (!(await confirmBox(`${c.branch} '${c.name}' (${fmt(c.startDate)}) 수업을 타지점 시간표에서 지울까요?`, '삭제'))) return;
+      await Store.del('branchClasses', c.id); await Store.log('delete', c.id, `타지점 시간표 삭제: ${c.branch} ${c.name}`); render();
+    },
     'grid-month': el => {
       const v = Number(el.dataset.v);
       if (!v) ui.gridMonth = null;

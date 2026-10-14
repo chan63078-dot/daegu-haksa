@@ -203,6 +203,13 @@ ok('팀장: 수업 삭제 못 함', r.ok && r.n === 0, r.e);
 r = await as('admin@x.com', () => tryq(`delete from items where collection='classes' and id='cdel'`));
 ok('원장: 수업 삭제', r.ok && r.n === 1, r.e);
 
+// 타지점 시간표: 모두 보고, 팀장 이상만 등록
+r = await as('lead1@x.com', () => tryq(`insert into items (collection,id,data) values ('branchClasses','b1','{"branch":"AI강남","name":"파이썬"}')`));
+ok('팀장: 타지점 시간표 등록', r.ok, r.e);
+r = await as('m1@x.com', () => tryq(`insert into items (collection,id,data) values ('branchClasses','b2','{"branch":"AI강남"}')`));
+ok('멘토: 타지점 시간표 등록 못 함', !r.ok);
+ok('멘토: 타지점 시간표 봄', await as('m1@x.com', () => ids('branchClasses')) === 'b1');
+
 // 재실행 안전
 r = await db.exec(schema).then(() => ({ ok: true }), e => ({ ok: false, e: e.message }));
 ok('스크립트 두 번 실행해도 됨', r.ok, r.e);

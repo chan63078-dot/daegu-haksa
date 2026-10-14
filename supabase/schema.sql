@@ -78,7 +78,7 @@ language sql stable security definer set search_path = public as $$
   select case
     when public.haksa_me() is null then false
     when col in ('staff', 'teams') then public.haksa_me()->>'role' = 'admin'
-    when col = 'classes' then public.haksa_me()->>'role' in ('admin', 'head', 'lead')
+    when col in ('classes', 'branchClasses') then public.haksa_me()->>'role' in ('admin', 'head', 'lead')
     when col = 'students' then public.haksa_can_see_row(mid, tid)
     when col in ('attendance', 'notes', 'meetings', 'tasks') then public.haksa_can_see_student(sid)
     else true  -- exams, leads, logs
