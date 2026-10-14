@@ -93,9 +93,9 @@
     '2026-05-05': '어린이날', '2026-05-24': '부처님오신날', '2026-05-25': '대체공휴일', '2026-06-03': '지방선거', '2026-06-06': '현충일',
     '2026-08-15': '광복절', '2026-08-17': '대체공휴일', '2026-09-24': '추석 연휴', '2026-09-25': '추석', '2026-09-26': '추석 연휴',
     '2026-10-03': '개천절', '2026-10-05': '대체공휴일', '2026-10-09': '한글날', '2026-12-25': '성탄절',
-    '2027-01-01': '신정', '2027-02-06': '설날 연휴', '2027-02-07': '설날', '2027-02-08': '설날 연휴', '2027-03-01': '삼일절',
-    '2027-05-05': '어린이날', '2027-05-13': '부처님오신날', '2027-06-06': '현충일', '2027-08-15': '광복절',
-    '2027-09-14': '추석 연휴', '2027-09-15': '추석', '2027-09-16': '추석 연휴', '2027-10-03': '개천절', '2027-10-09': '한글날', '2027-12-25': '성탄절'
+    '2027-01-01': '신정', '2027-02-06': '설날 연휴', '2027-02-07': '설날', '2027-02-08': '설날 연휴', '2027-02-09': '대체공휴일', '2027-03-01': '삼일절',
+    '2027-05-05': '어린이날', '2027-05-13': '부처님오신날', '2027-06-06': '현충일', '2027-08-15': '광복절', '2027-08-16': '대체공휴일',
+    '2027-09-14': '추석 연휴', '2027-09-15': '추석', '2027-09-16': '추석 연휴', '2027-10-03': '개천절', '2027-10-04': '대체공휴일', '2027-10-09': '한글날', '2027-10-11': '대체공휴일', '2027-12-25': '성탄절', '2027-12-27': '대체공휴일'
   };
 
   // 비고의 "휴강: 09/24,25, 10/05" "휴강: 09/24~25" 같은 날짜를 읽음 (" / " 뒤는 다른 메모)
@@ -123,15 +123,35 @@
     return out;
   }
   // 수업(또는 학습 계획)이 실제로 열리는 날짜들: 요일·기간 안에서 공휴일과 휴강일 제외
+  // 비고의 "격주 요일: 월수금 / 월수" (또는 "월수금월수") → 주마다 번갈아 가는 요일 묶음 [[1,3,5],[1,3]]
+  // 개강일이 있는 주(월요일 시작)가 첫 번째 묶음
+  function weekPatterns(note) {
+    const m = String(note || '').match(/격주\s*요일\s*:?\s*([일월화수목금토\s\/]+)/);
+    if (!m) return null;
+    const ord = ch => '월화수목금토일'.indexOf(ch);
+    const groups = [];
+    m[1].split('/').map(x => x.replace(/\s/g, '')).filter(Boolean).forEach(part => {
+      let cur = [];
+      for (const ch of part) {
+        if (cur.length && ord(ch) <= ord(cur[cur.length - 1])) { groups.push(cur); cur = []; }
+        cur.push(ch);
+      }
+      if (cur.length) groups.push(cur);
+    });
+    return groups.length > 1 ? groups.map(g => g.map(ch => DAYS.indexOf(ch))) : null;
+  }
   function sessions(c) {
     if (!c.startDate || !c.endDate || !(c.days || []).length) return [];
     const off = offDates(c.note, c.startDate);
+    const pats = weekPatterns(c.note);
+    const week0 = addDays(c.startDate, -((dow(c.startDate) + 6) % 7));
     const out = [];
     for (let d = c.startDate; d <= c.endDate && out.length < 400; d = addDays(d, 1)) {
-      if (c.days.includes(dow(d)) && !HOLIDAYS[d] && !off.has(d)) out.push(d);
+      const days = pats ? pats[Math.floor(diffDays(d, week0) / 7) % pats.length] : c.days;
+      if (days.includes(dow(d)) && !HOLIDAYS[d] && !off.has(d)) out.push(d);
     }
     return out;
   }
 
-  window.U = { HOLIDAYS, offDates, sessions, roleLabel, SCOPE, parseCSV, readTextFile, STATUS, ONGOING, CATEGORIES, TRACKS, ROLES, LEAD_STATUS, ATT, DAYS, pad, iso, parse, today, addDays, diffDays, dow, fmt, fmtFull, dday, esc, classOn, statusOf, leadStatusOf, csv, download };
+  window.U = { HOLIDAYS, offDates, weekPatterns, sessions, roleLabel, SCOPE, parseCSV, readTextFile, STATUS, ONGOING, CATEGORIES, TRACKS, ROLES, LEAD_STATUS, ATT, DAYS, pad, iso, parse, today, addDays, diffDays, dow, fmt, fmtFull, dday, esc, classOn, statusOf, leadStatusOf, csv, download };
 })();
