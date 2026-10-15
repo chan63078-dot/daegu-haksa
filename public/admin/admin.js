@@ -869,12 +869,22 @@
       </div></div></section>`;
   }
   // 줌 초대 문구에서 링크·회의 ID·암호 뽑기
-  function parseZoomInvite(text) {
-    const t = String(text || '');
+  // className을 주면, 여러 과목이 한꺼번에 적힌 공유 문구에서 그 과목 부분만 골라 읽음
+  function parseZoomInvite(text, className) {
+    let t = String(text || '');
+    const blocks = t.split(/(?=(?:^|\n)\s*(?:\d+\)\s*)?과목명?\s*[:：])/).filter(b => /\S/.test(b));
+    let picked = false;
+    if (blocks.length > 1 && className) {
+      const norm = x => String(x || '').replace(/\s·\s.*$/, '').replace(/[\s()]/g, '').toLowerCase();
+      const hit = blocks.find(b => norm(b).includes(norm(className)));
+      if (hit) { t = hit; picked = true; }
+    }
     const url = (t.match(/https?:\/\/[^\s<>"']+/i) || [''])[0];
-    const id = (t.match(/(?:회의\s*ID|meeting\s*id)\s*[:：]?\s*(\d[\d\s-]{7,}\d)/i) || [])[1] || '';
-    const pw = (t.match(/(?:암호|비밀번호|패스코드|passcode|password)\s*[:：]?\s*(\S+)/i) || [])[1] || '';
-    return { url, meetingId: id.replace(/\s+/g, ' ').trim(), pw };
+    const id = ((t.match(/(?:회의\s*ID|meeting\s*id|\bID)\s*[:：]?\s*(\d[\d\s-]{7,}\d)/i) || [])[1] || '').replace(/[\s-]+/g, ' ').trim();
+    const pw = (t.match(/(?:암호|비밀번호|패스코드|passcode|password|\bPW\b)\s*[:：]?\s*(\S+)/i) || [])[1] || '';
+    // 링크 없이 ID · PW만 받은 경우: 회의 ID로 참가 링크를 만들어 줌 (학생은 버튼을 누르고 암호 입력)
+    const made = !url && id ? `https://zoom.us/j/${id.replace(/\D/g, '')}` : '';
+    return { url: url || made, made: !!made, meetingId: id, pw, multi: blocks.length > 1, picked };
   }
   // 같은 강사가 이어서 하는 수업(리눅스1 → 리눅스2 …): 고정 줌 링크를 같이 쓰는 경우가 많음
   function linkedCohorts(c) {
@@ -892,7 +902,7 @@
     const sibs = edit ? linkedCohorts(c) : [];
     return `<section class="card" style="margin-top:16px"><div class="card-head"><h3>실시간 수업 줌 ${z.url ? '<span class="pill green">등록됨</span>' : ''}</h3><span class="faint">넣어 두면 학생 캘린더의 수업 날짜에 '실시간 수업 참여' 버튼이 생겨요${edit ? '' : ' · 입력은 담당 학생이 듣는 수업만 할 수 있어요'}</span></div>
       <div class="card-body" id="zoom-form">
-        ${edit ? `<textarea class="in" data-zoom-paste rows="3" placeholder="강사님께 받은 줌 초대 문구를 통째로 붙여 넣으세요 (링크 · 회의 ID · 암호가 아래 칸에 자동으로 들어가요)" style="width:100%;margin-bottom:10px"></textarea>` : ''}
+        ${edit ? `<textarea class="in" data-zoom-paste data-cname="${esc(c.name)}" rows="3" placeholder="강사님께 받은 줌 초대 문구를 통째로 붙여 넣으세요 (링크 · 회의 ID · 암호가 아래 칸에 자동으로 들어가요. ID · PW만 있어도 되고, 여러 과목이 적힌 문구면 이 수업 부분만 골라요)" style="width:100%;margin-bottom:10px"></textarea>` : ''}
         <div class="grid g3">
           ${field('참가 링크', `<input class="in" name="zoomUrl" value="${esc(z.url || '')}" placeholder="https://us06web.zoom.us/j/..." ${edit ? '' : 'disabled'}>`)}
           ${field('회의 ID', `<input class="in" name="zoomId" value="${esc(z.meetingId || '')}" ${edit ? '' : 'disabled'}>`)}
@@ -1578,8 +1588,10 @@
       const c = Store.get('classes', el.dataset.id);
       const v = vals(document.getElementById('zoom-form'));
       let url = v.zoomUrl, meetingId = v.zoomId, pw = v.zoomPw;
-      if (/\s/.test(url)) { const p = parseZoomInvite(url); url = p.url; meetingId = meetingId || p.meetingId; pw = pw || p.pw; }
-      if (!url) return toast('참가 링크를 넣어주세요');
+      if (/\s/.test(url)) { const p = parseZoomInvite(url, c.name); url = p.url; meetingId = meetingId || p.meetingId; pw = pw || p.pw; }
+      // 링크 없이 회의 ID만 있으면 ID로 참가 링크 만들기
+      if (!url && meetingId.replace(/\D/g, '').length >= 9) url = `https://zoom.us/j/${meetingId.replace(/\D/g, '')}`;
+      if (!url) return toast('참가 링크나 회의 ID를 넣어주세요');
       if (!/^https?:\/\/\S+$/i.test(url)) return toast('링크는 https:// 로 시작해야 해요');
       const targets = [c].concat((v.also || []).map(id => Store.get('classes', id)).filter(Boolean));
       const failed = [];
@@ -1766,11 +1778,13 @@
   // 줌 초대 문구 붙여 넣기 → 링크 · 회의 ID · 암호 칸 채우기
   document.addEventListener('input', e => {
     if (!e.target.hasAttribute || !e.target.hasAttribute('data-zoom-paste')) return;
-    const p = parseZoomInvite(e.target.value), f = document.getElementById('zoom-form');
+    const p = parseZoomInvite(e.target.value, e.target.dataset.cname), f = document.getElementById('zoom-form');
     if (!p.url || !f) return;
     f.querySelector('[name=zoomUrl]').value = p.url;
     if (p.meetingId) f.querySelector('[name=zoomId]').value = p.meetingId;
     if (p.pw) f.querySelector('[name=zoomPw]').value = p.pw;
+    if (p.multi && !p.picked) toast('여러 과목이 적혀 있는데 이 수업 이름을 못 찾았어요. 첫 번째 과목으로 채웠으니 확인해 주세요');
+    else if (p.made) toast('링크가 없어서 회의 ID로 참가 링크를 만들었어요');
   });
   // 학생 등록·정보 폼의 수업 검색: 다시 그리지 않고 목록만 걸러서 체크 상태 유지
   document.addEventListener('input', e => {
