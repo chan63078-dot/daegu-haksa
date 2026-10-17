@@ -13,13 +13,13 @@
     examQ: '',
     leadTab: 'open',
     reportMonths: 6,
-    classView: 'cards',   // 'cards' | 'grid'
+    classView: 'cards',   // 'cards' | 'grid' | 'list'
     gridMonth: null,      // 'YYYY-MM'
     gridKind: 'weekday',  // 'weekday' | 'weekend' | 'all'
     accounts: null       // 로그인 계정 목록 { email: {lastSignIn} } | 'loading' | { error }
   };
 
-  try { const v = localStorage.getItem('haksa-class-view'); if (v === 'grid' || v === 'cards') ui.classView = v; } catch (e) {}
+  try { const v = localStorage.getItem('haksa-class-view'); if (v === 'grid' || v === 'cards' || v === 'list') ui.classView = v; } catch (e) {}
 
   // ---------- 도우미 ----------
   const me = () => Store.me();
@@ -726,16 +726,22 @@
     const all = Store.all('classes');
     const list = sortBy(all.filter(c => classEnded(c) === ui.classArchived), c => (U.classOn(c, t) ? '0' : (c.startDate || '') <= t ? '1' : '2') + (c.startDate || '') + c.name);
     const studs = students();
-    const viewToggle = `<div class="seg"><button class="${ui.classView === 'cards' ? 'on present' : ''}" data-act="class-view" data-v="cards">카드</button><button class="${ui.classView === 'grid' ? 'on present' : ''}" data-act="class-view" data-v="grid">시간표</button></div>`;
+    const viewToggle = `<div class="seg"><button class="${ui.classView === 'cards' ? 'on present' : ''}" data-act="class-view" data-v="cards">카드</button><button class="${ui.classView === 'grid' ? 'on present' : ''}" data-act="class-view" data-v="grid">시간표</button><button class="${ui.classView === 'list' ? 'on present' : ''}" data-act="class-view" data-v="list">목록</button></div>`;
     const head = `<div class="page-head"><div><h1>수업</h1><p>반별 수강생을 보고, 학생과 수업을 연결해요</p></div>
       <div class="row">${viewToggle}${isLead() ? '<button class="btn" data-act="class-import">시간표 파일로 등록</button><button class="btn primary" data-act="class-new">+ 수업 추가</button>' : ''}</div></div>`;
     if (ui.classView === 'grid') return head + classGrid(all);
-    return `${head}
-    <div class="chips" style="margin-bottom:16px"><button class="chip ${!ui.classArchived ? 'on' : ''}" data-act="class-arch" data-v="0">진행·예정<b>${all.filter(c => !classEnded(c)).length}</b></button><button class="chip ${ui.classArchived ? 'on' : ''}" data-act="class-arch" data-v="1">종료<b>${all.filter(classEnded).length}</b></button></div>
+    const chips = `<div class="row" style="margin-bottom:16px;gap:12px"><div class="chips"><button class="chip ${!ui.classArchived ? 'on' : ''}" data-act="class-arch" data-v="0">진행·예정<b>${all.filter(c => !classEnded(c)).length}</b></button><button class="chip ${ui.classArchived ? 'on' : ''}" data-act="class-arch" data-v="1">종료<b>${all.filter(classEnded).length}</b></button></div>${searchBar()}</div>`;
+    if (ui.classView === 'list') {
+      return head + chips + `<div class="card tbl-wrap"><table class="tbl"><thead><tr><th>수업</th><th>요일 · 시간</th><th>기간</th><th>강의실</th><th>강사</th><th>회차</th><th>학생</th></tr></thead><tbody>
+        ${list.map(c => { const n = studs.filter(s => (s.classIds || []).includes(c.id) && ONGOING.includes(s.status)).length; return `<tr class="click" data-act="go" data-href="#/classes/${c.id}" data-qrow="${esc(ttText(c))}"><td><b>${esc(c.name)}</b>${U.classOn(c, t) ? ' <span class="pill accent" style="background:var(--accent);color:#fff">오늘</span>' : ''}${c.campus ? ' <span class="pill green">AI캠퍼스</span>' : ''}${c.gov ? ' <span class="pill blue">국비</span>' : ''}${(c.startDate || '') > t ? ' <span class="pill amber">개강 예정</span>' : ''}</td>
+          <td style="white-space:nowrap">${classTime(c)}</td><td style="white-space:nowrap">${classPeriod(c)}</td><td>${esc(c.room || '')}</td><td>${esc(c.instructor || '-')}</td><td>${U.sessions(c).length}회</td><td>${n}명</td></tr>`; }).join('') || `<tr><td colspan="7" class="empty">${ui.classArchived ? '끝난 수업이 없어요' : '아직 수업이 없어요'}</td></tr>`}
+      </tbody></table></div>`;
+    }
+    return `${head}${chips}
     <div class="grid g3">${list.map(c => {
       const n = studs.filter(s => (s.classIds || []).includes(c.id) && ONGOING.includes(s.status)).length;
       const on = U.classOn(c, t);
-      return `<a class="card class-card ${esc(c.color || 'gray')}${c.campus ? ' campus' : ''}" href="#/classes/${c.id}">
+      return `<a class="card class-card ${esc(c.color || 'gray')}${c.campus ? ' campus' : ''}" href="#/classes/${c.id}" data-qrow="${esc(ttText(c))}">
         <div class="row">${on ? '<span class="pill accent" style="background:var(--accent);color:#fff">오늘 수업</span>' : ''}${c.campus ? '<span class="pill green">AI캠퍼스</span>' : ''}${c.gov ? '<span class="pill blue">국비</span>' : ''}${classEnded(c) ? '<span class="pill">종료</span>' : (c.startDate || '') > t ? '<span class="pill amber">개강 예정</span>' : ''}</div>
         <h3>${esc(c.name)}</h3>
         <div class="faint">${classTime(c)} · ${esc(c.room || '')}${c.instructor ? ' · ' + esc(c.instructor) + ' 강사' : ''}</div>
@@ -761,8 +767,8 @@
     const foot = `<p class="faint">${updated ? `마지막 갱신 ${fmtFull(updated)} · ` : ''}수업 이름을 누르면 회차 날짜를 볼 수 있어요.</p>`;
     if (view === 'grid') return head + classGrid(list, { readonly: true }) + foot;
     const rows = sortBy(list.filter(c => !classEnded(c)), c => (c.startDate || '') + c.start + c.name);
-    return head + `<div class="card tbl-wrap"><table class="tbl"><thead><tr><th>수업</th><th>요일 · 시간</th><th>기간</th><th>강의실</th><th>강사</th><th>회차</th>${isLead() ? '<th></th>' : ''}</tr></thead><tbody>
-      ${rows.map(c => `<tr class="click" data-act="branch-class" data-id="${c.id}"><td><b>${esc(c.name)}</b>${c.gov ? ' <span class="pill blue">국비</span>' : ''}${(c.startDate || '') > t ? ' <span class="pill amber">개강 예정</span>' : ''}</td>
+    return head + `<div class="row" style="margin-bottom:12px">${searchBar()}</div><div class="card tbl-wrap"><table class="tbl"><thead><tr><th>수업</th><th>요일 · 시간</th><th>기간</th><th>강의실</th><th>강사</th><th>회차</th>${isLead() ? '<th></th>' : ''}</tr></thead><tbody>
+      ${rows.map(c => `<tr class="click" data-act="branch-class" data-id="${c.id}" data-qrow="${esc(ttText(c))}"><td><b>${esc(c.name)}</b>${c.gov ? ' <span class="pill blue">국비</span>' : ''}${(c.startDate || '') > t ? ' <span class="pill amber">개강 예정</span>' : ''}</td>
         <td style="white-space:nowrap">${classTime(c)}</td><td style="white-space:nowrap">${classPeriod(c)}</td><td>${esc(c.room || '')}</td><td>${esc(c.instructor || '-')}</td><td>${U.sessions(c).length}회</td>
         ${isLead() ? `<td><button class="btn sm ghost" data-act="branch-del" data-id="${c.id}" title="삭제">삭제</button></td>` : ''}</tr>`).join('') || '<tr><td colspan="7" class="empty">진행 중이거나 예정인 수업이 없어요</td></tr>'}
     </tbody></table></div>` + foot;
@@ -779,8 +785,17 @@
   const ttNorm = s => String(s || '').toLowerCase().replace(/\s/g, '');
   const ttText = c => ttNorm(`${c.name} ${c.instructor || ''} ${c.room || ''}`);
   // 검색어에 맞는 막대만 진하게, 나머지는 흐리게 (다시 그리지 않아서 한글 입력이 끊기지 않음)
+  const searchBar = () => `<input class="in" type="search" data-tt-q value="${esc(ui.ttQ || '')}" placeholder="수업 · 강사 · 강의실 검색" style="max-width:240px;height:34px"><span id="tt-hit" class="row" style="gap:6px"></span>`;
   function applyTtSearch() {
     const q = ttNorm(ui.ttQ), box = document.getElementById('tt-hit');
+    // 목록·카드: 맞는 것만 보이기
+    const rows = [...document.querySelectorAll('[data-qrow]')];
+    if (rows.length) {
+      let n = 0;
+      rows.forEach(r => { const on = !q || r.dataset.qrow.includes(q); r.style.display = on ? '' : 'none'; if (on) n++; });
+      if (box) box.innerHTML = q ? `<b>${n}개</b>${n ? '' : ' <span class="faint">· 진행·예정 / 종료 탭도 확인해 보세요</span>'}` : '';
+      return;
+    }
     const blocks = [...document.querySelectorAll('.tt-block[data-q]')];
     let hits = 0;
     blocks.forEach(b => { const on = !!q && b.dataset.q.includes(q); b.classList.toggle('hit', on); b.classList.toggle('dim', !!q && !on); if (on) hits++; });

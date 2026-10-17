@@ -4,9 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # 매일 오전 10시(한국 시간)에 Netlify 상태 확인 → 무료 사용량이 초기화되면 자동으로 Netlify 하나로 합침
+  schedule:
+    - cron: '0 1 * * *'
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -35,12 +38,41 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
-      # 2026-10-17: Netlify 무료 사용량 초과(11/2 초기화)로 직원용 최신 버전을 GitHub Pages 에도 올림.
-      # 학생 링크는 config.js 의 SITE_URL(Netlify) 그대로. 11/2 이후 다시 pages-redirect 로 되돌릴 수 있음
+      # 운영 주소는 Netlify(daegu-haksa.netlify.app).
+      # 2026-10-17: Netlify 무료 사용량 초과(결제 주기 10/3~11/2)로 그동안 직원용 최신 버전을 GitHub Pages 에 올림.
+      # 11/3부터: Netlify 에 최신 버전이 올라간 것을 확인하면 GitHub Pages 는 다시 "새 주소로 이동" 안내 페이지로 바꿈.
+      #           (Netlify 가 아직 안 올라가면 계속 앱을 올려서 직원이 쓸 수 있게 둠)
+      - name: Netlify 상태 확인 · 올릴 내용 정하기
+        id: mode
+        run: |
+          live() { curl -s https://daegu-haksa.netlify.app/admin/ | grep -o 'admin.js?v=[a-z0-9]*' | sed 's/.*v=//'; }
+          MODE=app
+          TODAY=$(TZ=Asia/Seoul date +%F)
+          if [[ "$TODAY" > "2026-11-02" ]]; then
+            SHA=$(git rev-parse --short=8 HEAD)
+            # 사용량 초과 동안 건너뛴 배포가 있으면, 초기화된 뒤 한 번 다시 올리도록 Netlify 를 깨움 (빈 커밋)
+            if [ "$(live)" != "$SHA" ] && [ "$GITHUB_EVENT_NAME" = "schedule" ] && ! git log -1 --pretty=%s | grep -q '^\[auto\]'; then
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git commit --allow-empty -m "[auto] Netlify 재배포 (무료 사용량 초기화 후 최신 버전 올리기)"
+              git push
+              SHA=$(git rev-parse --short=8 HEAD)
+            fi
+            for i in $(seq 1 40); do
+              if [ "$(live)" = "$SHA" ]; then MODE=redirect; break; fi
+              sleep 15
+            done
+          fi
+          echo "Netlify: $(live) / 올릴 내용: $MODE"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
       - name: 앱 파일 준비 (캐시 번호 붙이기)
+        if: steps.mode.outputs.mode == 'app'
         run: |
           cp -r public _site
           grep -rl '__BUILD__' _site | xargs sed -i "s/__BUILD__/${GITHUB_SHA::8}/g"
+      - name: 새 주소 안내 페이지 준비
+        if: steps.mode.outputs.mode == 'redirect'
+        run: cp -r pages-redirect _site
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
