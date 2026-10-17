@@ -1,4 +1,4 @@
-name: 테스트 + 예전 주소 안내 페이지 배포
+name: 테스트 + GitHub Pages 배포
 
 on:
   push:
@@ -35,10 +35,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
-      # 실제 사이트는 Netlify(daegu-haksa.netlify.app)에서 운영.
-      # GitHub Pages 에는 예전 링크를 새 주소로 넘겨 주는 안내 페이지만 올림
+      # 2026-10-17: Netlify 무료 사용량 초과(11/2 초기화)로 직원용 최신 버전을 GitHub Pages 에도 올림.
+      # 학생 링크는 config.js 의 SITE_URL(Netlify) 그대로. 11/2 이후 다시 pages-redirect 로 되돌릴 수 있음
+      - name: 앱 파일 준비 (캐시 번호 붙이기)
+        run: |
+          cp -r public _site
+          grep -rl '__BUILD__' _site | xargs sed -i "s/__BUILD__/${GITHUB_SHA::8}/g"
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: pages-redirect
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
