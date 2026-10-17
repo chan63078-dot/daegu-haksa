@@ -775,8 +775,31 @@
 
   // ---------- 시간표 보기 (강의실 × 시간, 막대) ----------
   const toMin = t => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
+  let ttAll = [];  // 시간표 검색용: 이 화면의 전체 수업(다른 달 포함)
+  const ttNorm = s => String(s || '').toLowerCase().replace(/\s/g, '');
+  const ttText = c => ttNorm(`${c.name} ${c.instructor || ''} ${c.room || ''}`);
+  // 검색어에 맞는 막대만 진하게, 나머지는 흐리게 (다시 그리지 않아서 한글 입력이 끊기지 않음)
+  function applyTtSearch() {
+    const q = ttNorm(ui.ttQ), box = document.getElementById('tt-hit');
+    const blocks = [...document.querySelectorAll('.tt-block[data-q]')];
+    let hits = 0;
+    blocks.forEach(b => { const on = !!q && b.dataset.q.includes(q); b.classList.toggle('hit', on); b.classList.toggle('dim', !!q && !on); if (on) hits++; });
+    if (!box) return;
+    if (!q) { box.innerHTML = ''; return; }
+    const cur = ui.gridMonth || today().slice(0, 7);
+    const months = {};
+    ttAll.filter(c => ttText(c).includes(q) && c.startDate && c.endDate && !c.archived).forEach(c => {
+      for (let m = c.startDate.slice(0, 7); m <= c.endDate.slice(0, 7); ) { if (m !== cur) months[m] = (months[m] || 0) + 1; const [y, mo] = m.split('-').map(Number); m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`; }
+    });
+    const other = Object.keys(months).sort().map(m => `<button class="chip" data-act="grid-month-go" data-v="${m}">${Number(m.slice(5))}월<b>${months[m]}</b></button>`).join('');
+    box.innerHTML = `<b>이 달 ${hits}개</b>${other ? ` <span class="faint">· 다른 달</span> ${other}` : ''}`;
+    const first = blocks.find(b => b.classList.contains('hit'));
+    if (first && applyTtSearch.scroll) { first.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' }); }
+    applyTtSearch.scroll = false;
+  }
   function classGrid(all, opts) {
     opts = opts || {};
+    ttAll = all;
     const t = today();
     const month = ui.gridMonth || t.slice(0, 7);
     const [yy, mm] = month.split('-').map(Number);
@@ -788,6 +811,8 @@
     const nav = `<div class="row" style="margin-bottom:12px;gap:12px">
       <div class="row" style="gap:4px"><button class="btn sm" data-act="grid-month" data-v="-1" aria-label="이전 달">◀</button><b style="min-width:96px;text-align:center">${yy}년 ${mm}월</b><button class="btn sm" data-act="grid-month" data-v="1" aria-label="다음 달">▶</button>${month !== t.slice(0, 7) ? '<button class="btn sm ghost" data-act="grid-month" data-v="0">이번 달</button>' : ''}</div>
       <div class="chips">${kindChips}</div>
+      <input class="in" type="search" data-tt-q value="${esc(ui.ttQ || '')}" placeholder="수업 · 강사 · 강의실 검색" style="max-width:220px;height:34px">
+      <span id="tt-hit" class="row" style="gap:6px"></span>
       <span class="faint">${fmt(from)} ~ ${fmt(to)} 사이에 진행되는 수업</span></div>`;
     if (!list.length) return nav + `<div class="card empty">이 달에 진행되는 ${ui.gridKind === 'weekend' ? '주말 ' : ui.gridKind === 'weekday' ? '평일 ' : ''}수업이 없어요</div>`;
 
@@ -818,7 +843,7 @@
       const top = (toMin(c.start) - startMin) / SLOT * PX, h = Math.max((toMin(c.end) - toMin(c.start)) / SLOT * PX - 3, 22);
       const n = opts.readonly ? 0 : studs.filter(s => (s.classIds || []).includes(c.id)).length;
       const live = U.classOn(c, t);
-      return `<${opts.readonly ? 'div' : 'a'} class="tt-block ${c.campus ? 'campus' : c.gov ? 'gov' : ''} ${classEnded(c) ? 'ended' : ''}" ${opts.readonly ? `data-act="branch-class" data-id="${c.id}" role="button"` : `href="#/classes/${c.id}"`} style="top:${top}px;height:${h}px" title="${esc(c.name)}\n${esc(classTime(c))}\n${esc(classPeriod(c))}${c.instructor ? '\n' + esc(c.instructor) + ' 강사' : ''}">
+      return `<${opts.readonly ? 'div' : 'a'} data-q="${esc(ttText(c))}" class="tt-block ${c.campus ? 'campus' : c.gov ? 'gov' : ''} ${classEnded(c) ? 'ended' : ''}" ${opts.readonly ? `data-act="branch-class" data-id="${c.id}" role="button"` : `href="#/classes/${c.id}"`} style="top:${top}px;height:${h}px" title="${esc(c.name)}\n${esc(classTime(c))}\n${esc(classPeriod(c))}${c.instructor ? '\n' + esc(c.instructor) + ' 강사' : ''}">
         <b>${live ? '<i class="tt-dot"></i>' : ''}${esc(c.name)}</b>
         <span>${esc(c.room || '')}${c.instructor ? ' | ' + esc(c.instructor) : ''}</span>
         ${h > 70 ? `<span>${esc(c.start)}~${esc(c.end)} · ${(c.days || []).map(d => DAYS[d]).join('')}</span><span>${classPeriod(c)}${n ? ` · ${n}명` : ''}</span>` : ''}
@@ -1373,6 +1398,7 @@
     const y = window.scrollY;
     const same = render._last === location.hash;
     app.innerHTML = shell(active, html);
+    if (ui.ttQ && document.querySelector('[data-tt-q]')) applyTtSearch();
     window.scrollTo(0, same ? y : 0);
     render._last = location.hash;
     // 녹화본 표: 오늘 또는 가장 최근 지난 회차가 보이게
@@ -1550,6 +1576,7 @@
     'class-arch': el => { ui.classArchived = el.dataset.v === '1'; render(); },
     'class-view': el => { ui.classView = el.dataset.v; try { localStorage.setItem('haksa-class-view', ui.classView); } catch (e) {} render(); },
     'grid-kind': el => { ui.gridKind = el.dataset.v; render(); },
+    'grid-month-go': el => { ui.gridMonth = el.dataset.v; applyTtSearch.scroll = true; render(); },
     'branch-view': el => { ui.branchView = el.dataset.v; render(); },
     'branch-import': el => openClassImport(el.dataset.v),
     'branch-class': el => branchClassInfo(Store.get('branchClasses', el.dataset.id)),
@@ -1774,6 +1801,11 @@
     urlIn.value = sp.url;
     if (sp.pw) noteIn.value = sp.pw;
     toast(sp.pw ? '링크와 암호를 나눠 넣었어요. 녹화본 저장을 눌러주세요' : '링크를 넣었어요. 녹화본 저장을 눌러주세요');
+  });
+  // 시간표 검색
+  document.addEventListener('input', e => {
+    if (!e.target.hasAttribute || !e.target.hasAttribute('data-tt-q')) return;
+    ui.ttQ = e.target.value; applyTtSearch.scroll = true; applyTtSearch();
   });
   // 줌 초대 문구 붙여 넣기 → 링크 · 회의 ID · 암호 칸 채우기
   document.addEventListener('input', e => {

@@ -265,6 +265,8 @@ div.tt-block { cursor: pointer; }
 .tt-block.campus { background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 50%, transparent); }
 .class-card.campus { border-left-color: var(--green); background: color-mix(in srgb, var(--green-soft) 55%, var(--surface)); }
 .tt-block.ended { opacity: .55; }
+.tt-block.dim { opacity: .18; }
+.tt-block.hit { outline: 2px solid var(--accent); outline-offset: 1px; z-index: 2; opacity: 1; }
 .tt-block b { font-size: 12.5px; font-weight: 700; display: block; }
 .tt-block span { color: var(--ink-2); font-size: 11.5px; }
 .tt-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 5px; vertical-align: 1px; }
