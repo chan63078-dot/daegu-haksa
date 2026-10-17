@@ -792,8 +792,8 @@
     if (!list.length) return nav + `<div class="card empty">이 달에 진행되는 ${ui.gridKind === 'weekend' ? '주말 ' : ui.gridKind === 'weekday' ? '평일 ' : ''}수업이 없어요</div>`;
 
     // 강의실별로, 그 달 안에서 시간·요일이 겹치는 반은 옆 칸(레인)으로 (앞뒤로 이어지는 기수도 나눠 보여 줌)
-    const overlap = (a, b) => toMin(a.start) < toMin(b.end) && toMin(b.start) < toMin(a.end)
-      && (a.days || []).some(d => (b.days || []).includes(d));
+    // 시간대가 겹치면 요일이 달라도 옆 칸으로 (막대가 같은 자리에 겹쳐 그려지지 않게)
+    const overlap = (a, b) => toMin(a.start) < toMin(b.end) && toMin(b.start) < toMin(a.end);
     const rooms = Array.from(new Set(list.map(c => c.room || '강의실 미정'))).sort((a, b) => a.localeCompare(b, 'ko'));
     const cols = [];
     rooms.forEach(room => {
