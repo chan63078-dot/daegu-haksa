@@ -958,7 +958,9 @@
   function splitRecording(text) {
     const t = String(text || '');
     const url = (t.match(/https?:\/\/[^\s<>"']+/i) || [''])[0];
-    const pw = (t.match(/(?:암호|비밀번호|패스코드|passcode|password|pw)\s*[:：]?\s*(\S+)/i) || [])[1] || '';
+    // 링크 안의 글자(예: ...UpWo...)를 암호로 읽지 않도록 링크를 빼고 찾음
+    const rest = t.replace(/https?:\/\/[^\s<>"']+/gi, ' ');
+    const pw = (rest.match(/(?:암호|비밀번호|패스코드|passcode|password|\bPW\b)\s*[:：]?\s*(\S+)/i) || [])[1] || '';
     return { url, pw };
   }
   const canEditRecordings = c => isLead() || students().some(s => s.mentorId === me().id && (s.classIds || []).includes(c.id));
