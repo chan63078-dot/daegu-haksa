@@ -193,6 +193,9 @@ r = await as('m1@x.com', () => tryq(`select class_set_zoom('c1', '{"url":"javasc
 ok('줌: https 아닌 링크 거부', !r.ok);
 v = (await as(null, () => db.query(`select student_view('tok-s1-aaaaaaaa') v`))).rows[0].v;
 ok('학생 링크: 실시간 줌 보임', v && v.classes[0].zoom && v.classes[0].zoom.meetingId === '854 9427 0486');
+await db.query(`update items set data = data || '{"notice":{"text":"11/14 휴강"}}' where collection='classes' and id='c1'`);
+v = (await as(null, () => db.query(`select student_view('tok-s1-aaaaaaaa') v`))).rows[0].v;
+ok('학생 링크: 수업 공지 보임', v && v.classes[0].notice && v.classes[0].notice.text === '11/14 휴강');
 r = await as('lead1@x.com', () => tryq(`select class_set_zoom('c1', '{}')`));
 ok('팀장: 줌 링크 지우기', r.ok && (await zoomOf('c1')) === null, r.e);
 

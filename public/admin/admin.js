@@ -889,6 +889,7 @@
         </tbody></table>` : '<div class="empty">아직 연결된 학생이 없어요. "학생 연결"을 눌러 고르세요.</div>'}
       </div></section>
     </div>
+    ${classNoticeCard(c)}
     ${noticeCard(c, roster)}
     ${zoomCard(c)}
     ${recordingsCard(c)}`;
@@ -936,6 +937,19 @@
     return out.filter(k => canEditRecordings(k));
   }
   // 실시간 수업 줌: 학생 캘린더의 수업 날짜에 '실시간 수업 참여' 버튼
+  // 수업 공지(휴강·일정 변경 등): 학생 캘린더 맨 위에 '수업 공지'로 보임, 게시 끝나는 날까지
+  function classNoticeCard(c) {
+    const n = c.notice || {};
+    const on = n.text && (n.until || c.endDate || '9999') >= today();
+    if (!isLead() && !on) return '';
+    return `<section class="card" style="margin-top:16px"><div class="card-head"><h3>수업 공지 ${on ? '<span class="pill amber">학생에게 보이는 중</span>' : ''}</h3><span class="faint">휴강·보강 같은 공지를 넣으면 이 수업 학생들의 캘린더 맨 위에 보여요</span></div>
+      <div class="card-body" id="cnotice-form">
+        ${isLead() ? `<textarea class="in" name="noticeText" rows="6" style="width:100%" placeholder="받은 공지 문구를 그대로 붙여 넣으세요">${esc(n.text || '')}</textarea>
+        <div class="row" style="justify-content:space-between;margin-top:10px"><label class="row faint" style="gap:6px">게시 끝나는 날 <input class="in" type="date" name="noticeUntil" value="${esc(n.until || '')}" style="height:34px"> <span>(비우면 종강일까지)</span></label>
+          <div class="row">${n.text ? `<button class="btn" data-act="cnotice-clear" data-id="${c.id}">공지 내리기</button>` : ''}<button class="btn primary" data-act="cnotice-save" data-id="${c.id}">공지 올리기</button></div></div>`
+        : `<div style="white-space:pre-wrap">${esc(n.text)}</div>`}
+      </div></section>`;
+  }
   function zoomCard(c) {
     const z = c.zoom || {};
     const edit = canEditRecordings(c);
@@ -1628,6 +1642,19 @@
       location.hash = '#/classes';
     },
     'class-link': el => linkStudents(Store.get('classes', el.dataset.id)),
+    'cnotice-save': async el => {
+      const c = Store.get('classes', el.dataset.id), v = vals(document.getElementById('cnotice-form'));
+      const text = String(v.noticeText || '').trim();
+      if (!text) return toast('공지 내용을 넣어주세요');
+      await Store.put('classes', Object.assign({}, c, { notice: { text, until: v.noticeUntil || '', at: today() } }));
+      await Store.log('update', c.id, `수업 공지 올림: ${c.name}`); toast('공지를 올렸어요. 학생 캘린더에 보여요'); render();
+    },
+    'cnotice-clear': async el => {
+      const c = Store.get('classes', el.dataset.id);
+      if (!(await confirmBox(`'${c.name}' 공지를 내릴까요?`, '내리기'))) return;
+      await Store.put('classes', Object.assign({}, c, { notice: null }));
+      await Store.log('update', c.id, `수업 공지 내림: ${c.name}`); render();
+    },
     'zoom-save': async el => {
       const c = Store.get('classes', el.dataset.id);
       const v = vals(document.getElementById('zoom-form'));
