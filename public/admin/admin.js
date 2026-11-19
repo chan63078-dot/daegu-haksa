@@ -193,6 +193,7 @@
     ['home', '#/', '오늘'],
     ['students', '#/students', '학생'],
     ['classes', '#/classes', '수업'],
+    ['plan', '#/plan', '시간표 짜기'],
     ['branches', '#/branches', '타지점 시간표'],
     ['exams', '#/exams', '시험 일정'],
     ['report', '#/report', '리포트'],
@@ -749,6 +750,61 @@
         <div style="margin-top:8px;font-weight:700">학생 ${n}명</div></a>`;
     }).join('') || `<div class="card empty" style="grid-column:1/-1">${ui.classArchived ? '끝난 수업이 없어요' : `아직 수업이 없어요.${isLead() ? '<br>매달 받는 "IT대구 ○월 평일/주말 강의 시간표" 파일을 <b>시간표 파일로 등록</b>에 올리면 한꺼번에 들어가요.' : ''}`}</div>`}</div>`;
   }
+
+  // ---------- 시간표 짜기 (상담용 개인 맞춤 시간표, 엑셀 견본과 같은 모양) ----------
+  ui.plan = { ids: [], name: '', phone: '', date: today() };
+  const planDays = c => {
+    const pats = U.weekPatterns(c.note), mon = a => a.slice().sort((x, y) => (x + 6) % 7 - (y + 6) % 7).map(d => DAYS[d]).join(', ');
+    return pats ? pats.map(mon).join(' / ') : mon(c.days || []);
+  };
+  // 엑셀로도 그대로 열리게 스타일은 모두 인라인
+  function planSheet() {
+    const p = ui.plan, picked = sortBy(p.ids.map(id => Store.get('classes', id)).filter(Boolean), c => c.startDate || '');
+    const weekend = c => (c.days || []).length && c.days.every(d => d === 0 || d === 6);
+    const slots = kind => {
+      const m = {};
+      picked.filter(c => weekend(c) === kind).forEach(c => { const k = `${c.start || ''}~${c.end || ''}`; (m[k] = m[k] || []).push(c); });
+      return Object.keys(m).sort().map(k => [k, m[k]]);
+    };
+    const wk = slots(false), we = slots(true);
+    const n = Math.max(5, ...wk.concat(we).map(x => x[1].length));
+    const bd = 'border:1px solid #999;', th = bd + 'background:#d9d9d9;font-weight:bold;text-align:center;vertical-align:middle;white-space:nowrap;padding:0 10px;';
+    const cell = c => c ? `<td style="${bd}vertical-align:top;padding:6px 8px;width:175px;min-width:175px;font-size:12px;line-height:1.6"><b style="font-size:13px">${esc(c.name)}</b><br>개강 : ${c.startDate || ''}<br>종강 : ${c.endDate || ''}<br>요일 : ${esc(planDays(c))}<br>시간 : ${esc(c.start || '')} ~ ${esc(c.end || '')}${c.room ? `<br>강의실 : ${esc(c.room)}` : ''}</td>` : `<td style="${bd}width:175px;min-width:175px"></td>`;
+    const block = (title, rows) => `<tr><td style="${th}font-size:15px;height:36px">${title}</td>${`<td style="${bd}background:#d9d9d9"></td>`.repeat(n)}</tr>`
+      + (rows.length ? rows : [['', []]]).map(([k, list]) => `<tr><td style="${th}height:120px">${esc(k)}</td>${Array.from({ length: n }, (_, i) => cell(list[i])).join('')}</tr>`).join('');
+    const m = me() || {};
+    return `<table style="border-collapse:collapse;font-family:'Malgun Gothic',sans-serif;color:#222">
+      <tr><td colspan="${n + 1}" style="font-size:14px;padding-top:6px">개인별 맞춤 교육과정</td></tr>
+      <tr><td colspan="${n - 1}" style="font-size:36px;font-weight:800;line-height:1.1">PERSONAL<br>COURSE PLAN</td>
+        <td colspan="2" style="font-size:13px;vertical-align:bottom;line-height:1.9">성명: ${esc(p.name)}<br>연락처: ${esc(p.phone)}<br>상담일: ${esc(p.date)}</td></tr>
+      <tr><td colspan="${n + 1}" style="height:10px"></td></tr>
+      ${block('평일수강시간', wk)}${block('주말수강시간', we)}
+      <tr><td colspan="${n + 1}" style="height:18px"></td></tr>
+      <tr><td colspan="${n + 1}" style="font-size:14px">Consultant. &nbsp; ${esc(m.name || '')} ${esc(m.title || '')}</td></tr>
+    </table>`;
+  }
+  function pagePlan() {
+    const p = ui.plan, t = today();
+    const list = sortBy(Store.all('classes').filter(c => !classEnded(c) && c.startDate), c => (c.startDate || '') + c.name);
+    return `<div class="page-head"><div><h1>시간표 짜기</h1><p>상담할 때 들을 수업을 고르면 엑셀 시간표 모양으로 나열돼요. 인쇄하거나 엑셀로 받아서 안내하세요</p></div>
+      <div class="row"><button class="btn" data-act="plan-clear">비우기</button><button class="btn" data-act="plan-print">인쇄 · PDF</button><button class="btn primary" data-act="plan-xls">엑셀 받기</button></div></div>
+      <div style="display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:16px;align-items:start" class="plan-wrap">
+        <section class="card"><div class="card-body">
+          <div class="form">
+            ${field('성명', `<input class="in" data-plan="name" value="${esc(p.name)}">`)}
+            ${field('연락처', `<input class="in" data-plan="phone" value="${esc(p.phone)}">`)}
+            ${field('상담일', `<input class="in" type="date" data-plan="date" value="${esc(p.date)}">`)}
+          </div>
+          <div class="faint" style="margin:14px 0 6px">수업 고르기 (${list.length}개 중 <b id="plan-n">${p.ids.length}</b>개)</div>
+          <input class="in" type="search" placeholder="수업 검색 (예: 파이썬, 주말, B[10층])" data-class-q style="margin-bottom:8px">
+          <div style="max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 12px">${list.map(c => `<label class="li check" data-class-item="${esc([c.name, c.room, c.instructor, classTime(c), c.startDate].join(' ').toLowerCase().replace(/\s/g, ''))}" style="padding:8px 0"><input type="checkbox" data-change="plan-pick" value="${c.id}" ${p.ids.includes(c.id) ? 'checked' : ''}><div class="main"><div class="t" style="font-weight:600">${esc(c.name)}${c.startDate > t ? '' : ' <span class="pill green">진행 중</span>'}</div><div class="s">${classPeriod(c)} · ${classTime(c)} · ${esc(c.room || '')}</div></div></label>`).join('')}</div>
+        </div></section>
+        <section class="card" style="overflow:auto"><div class="card-body" id="plan-sheet">${p.ids.length ? planSheet() : '<div class="empty">왼쪽에서 수업을 고르면 여기에 시간표가 나와요</div>'}</div></section>
+      </div>`;
+  }
+  const planRefresh = () => { const s = document.getElementById('plan-sheet'), n = document.getElementById('plan-n'); if (s) s.innerHTML = ui.plan.ids.length ? planSheet() : '<div class="empty">왼쪽에서 수업을 고르면 여기에 시간표가 나와요</div>'; if (n) n.textContent = ui.plan.ids.length; };
+  document.addEventListener('input', e => { const k = e.target.dataset && e.target.dataset.plan; if (k) { ui.plan[k] = e.target.value; planRefresh(); } });
+  const planFile = () => `시간표_${ui.plan.name || '상담'}_${ui.plan.date || today()}`;
 
   // ---------- 타지점 시간표 (보기 전용, 팀장 이상이 시간표 파일로 갱신) ----------
   const BRANCHES = ['AI강남', 'AI신촌', 'AI부산'];
@@ -1421,6 +1477,7 @@
     else if (p0 === 'students') html = pageStudents();
     else if (p0 === 'classes' && p1) html = pageClass(p1);
     else if (p0 === 'classes') html = pageClasses();
+    else if (p0 === 'plan') html = pagePlan();
     else if (p0 === 'branches') html = pageBranches(p1 && decodeURIComponent(p1));
     else if (p0 === 'exams') html = pageExams();
     else if (p0 === 'report') html = pageReport();
@@ -1453,6 +1510,19 @@
         await Store.changePassword(v.pw); toast('비밀번호를 바꿨어요');
       }
     }),
+    'plan-clear': () => { ui.plan = { ids: [], name: '', phone: '', date: today() }; render(); },
+    'plan-print': () => {
+      if (!ui.plan.ids.length) return toast('먼저 수업을 골라주세요');
+      const w = window.open('', '_blank');
+      if (!w) return toast('팝업이 막혀 있어요. 이 사이트의 팝업을 허용해 주세요');
+      w.document.write(`<!doctype html><meta charset="utf-8"><title>${esc(planFile())}</title><style>@page{size:A4 landscape;margin:10mm}body{margin:0}</style>${planSheet()}<script>onload=()=>print()<\/script>`);
+      w.document.close();
+    },
+    'plan-xls': () => {
+      if (!ui.plan.ids.length) return toast('먼저 수업을 골라주세요');
+      // 표를 엑셀용 HTML로 저장 (엑셀이 열 때 "형식이 다르다"고 물으면 '예'를 누르면 돼요)
+      U.download(planFile() + '.xls', `\ufeff<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>상담판</x:Name><x:WorksheetOptions><x:Print><x:ValidPrinterInfo/><x:Landscape/></x:Print></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>${planSheet()}</body></html>`, 'application/vnd.ms-excel;charset=utf-8');
+    },
     'home-mine': () => { ui.homeMine = !ui.homeMine; render(); },
     'student-new': () => newStudent(),
     'import-open': () => openImport(),
@@ -1779,6 +1849,7 @@
   };
 
   const CH = {
+    'plan-pick': el => { const s = new Set(ui.plan.ids); if (el.checked) s.add(el.value); else s.delete(el.value); ui.plan.ids = Array.from(s); planRefresh(); },
     'stu-cat': el => { ui.stu.cat = el.value; render(); },
     'stu-mentor': el => { ui.stu.mentor = el.value; render(); },
     'stu-set-status': async el => { await setStatus(Store.get('students', el.dataset.id), el.value); render(); },
