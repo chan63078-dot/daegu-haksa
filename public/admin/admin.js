@@ -759,7 +759,7 @@
   };
   // 엑셀로도 그대로 열리게 스타일은 모두 인라인
   function planSheet() {
-    const p = ui.plan, picked = sortBy(p.ids.map(id => Store.get('classes', id)).filter(Boolean), c => c.startDate || '');
+    const p = ui.plan, picked = sortBy(p.ids.map(planGet).filter(Boolean), c => c.startDate || '');
     const weekend = c => (c.days || []).length && c.days.every(d => d === 0 || d === 6);
     const slots = kind => {
       const m = {};
@@ -769,10 +769,9 @@
     const wk = slots(false), we = slots(true);
     const n = Math.max(5, ...wk.concat(we).map(x => x[1].length));
     const bd = 'border:1px solid #999;', th = bd + 'background:#d9d9d9;font-weight:bold;text-align:center;vertical-align:middle;white-space:nowrap;padding:0 10px;';
-    const cell = c => c ? `<td style="${bd}vertical-align:top;padding:6px 8px;width:175px;min-width:175px;font-size:12px;line-height:1.6"><b style="font-size:13px">${esc(c.name)}</b><br>개강 : ${c.startDate || ''}<br>종강 : ${c.endDate || ''}<br>요일 : ${esc(planDays(c))}<br>시간 : ${esc(c.start || '')} ~ ${esc(c.end || '')}${c.room ? `<br>강의실 : ${esc(c.room)}` : ''}</td>` : `<td style="${bd}width:175px;min-width:175px"></td>`;
+    const cell = c => c ? `<td style="${bd}vertical-align:top;padding:6px 8px;width:175px;min-width:175px;font-size:12px;line-height:1.6"><b style="font-size:13px">${esc(c.name)}</b><br>개강 : ${c.startDate || ''}<br>종강 : ${c.endDate || ''}<br>요일 : ${esc(planDays(c))}<br>시간 : ${esc(c.start || '')} ~ ${esc(c.end || '')}${c.room || c.branch ? `<br>강의실 : ${esc([c.branch, c.room].filter(Boolean).join(' '))}` : ''}</td>` : `<td style="${bd}width:175px;min-width:175px"></td>`;
     const block = (title, rows) => `<tr><td style="${th}font-size:15px;height:36px">${title}</td>${`<td style="${bd}background:#d9d9d9"></td>`.repeat(n)}</tr>`
       + (rows.length ? rows : [['', []]]).map(([k, list]) => `<tr><td style="${th}height:120px">${esc(k)}</td>${Array.from({ length: n }, (_, i) => cell(list[i])).join('')}</tr>`).join('');
-    const m = me() || {};
     return `<table style="border-collapse:collapse;font-family:'Malgun Gothic',sans-serif;color:#222">
       <tr><td colspan="${n + 1}" style="font-size:14px;padding-top:6px">개인별 맞춤 교육과정</td></tr>
       <tr><td colspan="${n - 1}" style="font-size:36px;font-weight:800;line-height:1.1">PERSONAL<br>COURSE PLAN</td>
@@ -780,12 +779,13 @@
       <tr><td colspan="${n + 1}" style="height:10px"></td></tr>
       ${block('평일수강시간', wk)}${block('주말수강시간', we)}
       <tr><td colspan="${n + 1}" style="height:18px"></td></tr>
-      <tr><td colspan="${n + 1}" style="font-size:14px">Consultant. &nbsp; ${esc(m.name || '')} ${esc(m.title || '')}</td></tr>
+      <tr><td colspan="${n + 1}" style="font-size:14px">Consultant. &nbsp; ${esc(planConsultant())}</td></tr>
     </table>`;
   }
   function pagePlan() {
     const p = ui.plan, t = today();
-    const list = sortBy(Store.all('classes').filter(c => !classEnded(c) && c.startDate), c => (c.startDate || '') + c.name);
+    const br = p.branch || '';
+    const list = sortBy((br ? Store.all('branchClasses').filter(c => c.branch === br) : Store.all('classes')).filter(c => !classEnded(c) && c.startDate), c => (c.startDate || '') + c.name);
     return `<div class="page-head"><div><h1>시간표 짜기</h1><p>상담할 때 들을 수업을 고르면 엑셀 시간표 모양으로 나열돼요. 인쇄하거나 엑셀로 받아서 안내하세요</p></div>
       <div class="row"><button class="btn" data-act="plan-clear">비우기</button><button class="btn" data-act="plan-print">인쇄 · PDF</button><button class="btn primary" data-act="plan-xls">엑셀 받기</button></div></div>
       <div style="display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:16px;align-items:start" class="plan-wrap">
@@ -794,14 +794,19 @@
             ${field('성명', `<input class="in" data-plan="name" value="${esc(p.name)}">`)}
             ${field('연락처', `<input class="in" data-plan="phone" value="${esc(p.phone)}">`)}
             ${field('상담일', `<input class="in" type="date" data-plan="date" value="${esc(p.date)}">`)}
+            ${field('상담자 (시간표 아래 이름)', `<input class="in" data-plan="consultant" value="${esc(planConsultant())}" placeholder="예: 홍길동 부장">`)}
           </div>
-          <div class="faint" style="margin:14px 0 6px">수업 고르기 (${list.length}개 중 <b id="plan-n">${p.ids.length}</b>개)</div>
+          <div class="row" style="margin-top:14px;gap:8px;align-items:center"><span class="faint">지점</span><select class="in" data-change="plan-branch" style="flex:1">${[['', '대구 (우리 지점)']].concat(BRANCHES.map(b => [b, b])).map(([v, l]) => `<option value="${esc(v)}" ${v === br ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
+          <div class="faint" style="margin:10px 0 6px">수업 고르기 (${list.length}개 중 · 고른 수업 <b id="plan-n">${p.ids.length}</b>개, 지점을 바꿔도 유지돼요)</div>
           <input class="in" type="search" placeholder="수업 검색 (예: 파이썬, 주말, B[10층])" data-class-q style="margin-bottom:8px">
           <div style="max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 12px">${list.map(c => `<label class="li check" data-class-item="${esc([c.name, c.room, c.instructor, classTime(c), c.startDate].join(' ').toLowerCase().replace(/\s/g, ''))}" style="padding:8px 0"><input type="checkbox" data-change="plan-pick" value="${c.id}" ${p.ids.includes(c.id) ? 'checked' : ''}><div class="main"><div class="t" style="font-weight:600">${esc(c.name)}${c.startDate > t ? '' : ' <span class="pill green">진행 중</span>'}</div><div class="s">${classPeriod(c)} · ${classTime(c)} · ${esc(c.room || '')}</div></div></label>`).join('')}</div>
         </div></section>
         <section class="card" style="overflow:auto"><div class="card-body" id="plan-sheet">${p.ids.length ? planSheet() : '<div class="empty">왼쪽에서 수업을 고르면 여기에 시간표가 나와요</div>'}</div></section>
       </div>`;
   }
+  // 고른 수업은 우리 수업이나 타지점 수업 어느 쪽이든 될 수 있음
+  const planGet = id => Store.get('classes', id) || Store.get('branchClasses', id);
+  const planConsultant = () => { if (ui.plan.consultant != null) return ui.plan.consultant; const m = me() || {}; return [m.name, m.title || U.roleLabel(m)].filter(Boolean).join(' '); };
   const planRefresh = () => { const s = document.getElementById('plan-sheet'), n = document.getElementById('plan-n'); if (s) s.innerHTML = ui.plan.ids.length ? planSheet() : '<div class="empty">왼쪽에서 수업을 고르면 여기에 시간표가 나와요</div>'; if (n) n.textContent = ui.plan.ids.length; };
   document.addEventListener('input', e => { const k = e.target.dataset && e.target.dataset.plan; if (k) { ui.plan[k] = e.target.value; planRefresh(); } });
   const planFile = () => `시간표_${ui.plan.name || '상담'}_${ui.plan.date || today()}`;
@@ -1849,6 +1854,7 @@
   };
 
   const CH = {
+    'plan-branch': el => { ui.plan.branch = el.value; render(); },
     'plan-pick': el => { const s = new Set(ui.plan.ids); if (el.checked) s.add(el.value); else s.delete(el.value); ui.plan.ids = Array.from(s); planRefresh(); },
     'stu-cat': el => { ui.stu.cat = el.value; render(); },
     'stu-mentor': el => { ui.stu.mentor = el.value; render(); },
