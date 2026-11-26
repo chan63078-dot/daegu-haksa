@@ -895,7 +895,9 @@
     // 강의실별로, 그 달 안에서 시간·요일이 겹치는 반은 옆 칸(레인)으로 (앞뒤로 이어지는 기수도 나눠 보여 줌)
     // 시간대가 겹치면 요일이 달라도 옆 칸으로 (막대가 같은 자리에 겹쳐 그려지지 않게)
     const overlap = (a, b) => toMin(a.start) < toMin(b.end) && toMin(b.start) < toMin(a.end);
-    const rooms = Array.from(new Set(list.map(c => c.room || '강의실 미정'))).sort((a, b) => a.localeCompare(b, 'ko'));
+    // AI캠퍼스(비대면) 강의실은 오른쪽으로 몰아서
+    const campusRoom = new Set(list.filter(c => c.campus).map(c => c.room || '강의실 미정'));
+    const rooms = Array.from(new Set(list.map(c => c.room || '강의실 미정'))).sort((a, b) => campusRoom.has(a) - campusRoom.has(b) || a.localeCompare(b, 'ko'));
     const cols = [];
     rooms.forEach(room => {
       const lanes = [];
