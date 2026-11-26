@@ -806,9 +806,9 @@
   }
   // 고른 수업은 우리 수업이나 타지점 수업 어느 쪽이든 될 수 있음
   const planGet = id => Store.get('classes', id) || Store.get('branchClasses', id);
-  const planConsultant = () => { if (ui.plan.consultant != null) return ui.plan.consultant; const m = me() || {}; return [m.name, m.title || U.roleLabel(m)].filter(Boolean).join(' '); };
+  const planConsultant = () => { if (ui.plan.consultant != null) return ui.plan.consultant; try { const v = localStorage.getItem('haksa-plan-consultant'); if (v != null) return v; } catch (e) {} const m = me() || {}; return [m.name, m.title || U.roleLabel(m)].filter(Boolean).join(' '); };
   const planRefresh = () => { const s = document.getElementById('plan-sheet'), n = document.getElementById('plan-n'); if (s) s.innerHTML = ui.plan.ids.length ? planSheet() : '<div class="empty">왼쪽에서 수업을 고르면 여기에 시간표가 나와요</div>'; if (n) n.textContent = ui.plan.ids.length; };
-  document.addEventListener('input', e => { const k = e.target.dataset && e.target.dataset.plan; if (k) { ui.plan[k] = e.target.value; planRefresh(); } });
+  document.addEventListener('input', e => { const k = e.target.dataset && e.target.dataset.plan; if (k) { ui.plan[k] = e.target.value; if (k === 'consultant') try { localStorage.setItem('haksa-plan-consultant', e.target.value); } catch (er) {} planRefresh(); } });
   const planFile = () => `시간표_${ui.plan.name || '상담'}_${ui.plan.date || today()}`;
 
   // ---------- 타지점 시간표 (보기 전용, 팀장 이상이 시간표 파일로 갱신) ----------
