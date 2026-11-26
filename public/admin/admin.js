@@ -163,6 +163,22 @@
     });
   }
 
+  // 종강 2주 안 · 그 뒤로 이어 들을 수업이 없는 진행 중 학생 (재등록 상담 대상)
+  function renewals(list) {
+    const t = today(), out = [];
+    ongoing(list).forEach(s => {
+      const cs = (s.classIds || []).map(id => Store.get('classes', id)).filter(c => c && !c.archived && c.endDate);
+      if (!cs.length) return;
+      const last = sortBy(cs, c => c.endDate).pop();
+      if (last.endDate < t || diffDays(last.endDate, t) > 14) return;
+      const r = s.renewal || {};
+      const state = r.end === last.endDate ? r.state || '' : '';
+      if (state === '재등록' || state === '안 함') return;
+      out.push({ s, c: last, end: last.endDate, next: nextCohort(last), state });
+    });
+    return sortBy(out, x => x.end + x.s.name);
+  }
+
   const lastBackup = () => Store.get('settings', 'backup');
   function backupAge() { const b = lastBackup(); return b && b.at ? diffDays(today(), b.at.slice(0, 10)) : null; }
 
@@ -177,6 +193,16 @@
       const notes = Store.all('notes').filter(n => n.studentId === s.id);
       const late = notes.find(n => n.nextDate && n.nextDate < t && !notes.some(m => m.date >= n.nextDate));
       if (late) out.push({ tone: 'amber', s, title: '후속 상담 지연', sub: `예정일 ${fmt(late.nextDate)}` });
+      // 결석 경고: 수업별로 최근 두 번 연속 결석, 또는 결석 3회 이상 (종강 7일 지난 수업은 뺌)
+      const att = Store.all('attendance').filter(a => a.studentId === s.id);
+      new Set(att.map(a => a.classId)).forEach(cid => {
+        const c = Store.get('classes', cid);
+        if (!c || (c.endDate && diffDays(t, c.endDate) > 7)) return;
+        const rows = sortBy(att.filter(a => a.classId === cid), a => a.date);
+        const abs = rows.filter(a => a.state === 'absent');
+        if (rows.length >= 2 && rows.slice(-2).every(a => a.state === 'absent')) out.push({ tone: 'red', s, title: '연속 결석', sub: `${c.name} · 최근 ${fmt(rows[rows.length - 2].date)} · ${fmt(rows[rows.length - 1].date)} 결석 (총 ${abs.length}회)` });
+        else if (abs.length >= 3) out.push({ tone: 'amber', s, title: `결석 ${abs.length}회`, sub: `${c.name} · 마지막 결석 ${fmt(abs[abs.length - 1].date)}` });
+      });
       const overdue = Store.all('tasks').filter(k => k.studentId === s.id && !k.done && k.due && k.due < t);
       if (overdue.length) out.push({ tone: 'blue', s, title: '할 일 지연', sub: `${overdue[0].title}${overdue.length > 1 ? ` 외 ${overdue.length - 1}건` : ''}` });
       exams.filter(e => (e.studentIds || []).includes(s.id) && e.regEnd && e.regEnd >= t && diffDays(e.regEnd, t) <= 3)
@@ -263,6 +289,8 @@
     const cohorts = cohortSuggestions(list);
     ui._cohorts = cohorts;
     const bAge = isAdmin() ? backupAge() : 0;
+    const reqs = sortBy(Store.all('meetings').filter(x => ids.has(x.studentId) && x.request && !x.request.seen && !x.done), x => x.date + (x.time || ''));
+    const renew = renewals(list);
     const examSoon = sortBy(Store.all('exams').filter(e => examLast(e) >= t && (diffDays(e.examDate, t) <= 21 || (e.regEnd && e.regEnd >= t && diffDays(e.regEnd, t) <= 7))), e => e.examDate);
     const h = new Date().getHours();
     const hello = h < 11 ? '좋은 아침이에요' : h < 18 ? '안녕하세요' : '오늘도 수고하셨어요';
@@ -286,13 +314,20 @@
     </div>
 
     <div class="grid g3" style="margin-top:16px;align-items:start">
-      <section class="card span2"><div class="card-head"><h3>챙겨야 할 학생</h3><span class="faint">면담 공백 · 후속 상담 · 할 일 지연 · 시험 접수·임박</span></div>
+      <section class="card span2"><div class="card-head"><h3>챙겨야 할 학생</h3><span class="faint">결석 · 면담 공백 · 후속 상담 · 할 일 지연 · 시험 접수·임박</span></div>
         <div class="card-body">${alerts.length ? alerts.slice(0, 20).map(a => `<a class="alert-row" href="#/students/${a.s.id}${a.title.includes('시험') || a.title.includes('접수') ? '/certs' : a.title.includes('할 일') ? '/certs' : '/notes'}"><span class="alert-dot ${a.tone}"></span><div class="grow"><b>${esc(a.s.name)}</b> <span class="muted">· ${esc(a.title)}</span><div class="faint">${esc(a.sub)} · 담당 ${esc(staffName(a.s.mentorId))}</div></div></a>`).join('') + (alerts.length > 20 ? `<div class="faint" style="padding-top:8px">외 ${alerts.length - 20}건</div>` : '') : '<div class="empty">지금 따로 챙길 학생이 없어요</div>'}</div></section>
       <div class="grid">
+        ${reqs.length ? `<section class="card" style="border-color:var(--amber)"><div class="card-head"><h3>학생 면담 신청</h3><span class="pill amber">${reqs.length}</span></div>
+          <div class="card-body"><div class="list">${reqs.map(x => { const s = Store.get('students', x.studentId); return `<div class="li" style="align-items:flex-start"><div class="main"><a class="t" href="#/students/${x.studentId}/notes" style="text-decoration:none">${esc(s ? s.name : '')}</a><div class="s">희망 ${fmt(x.date)} ${esc(x.time || '')} · 담당 ${esc(staffName(s && s.mentorId))}</div><div class="s" style="white-space:pre-wrap;color:var(--ink)">${esc(x.request.text || '')}</div></div><button class="btn sm primary" data-act="req-seen" data-id="${x.id}" title="학생 화면에 '멘토 확인'으로 보여요">확인</button></div>`; }).join('')}</div>
+          <p class="faint" style="margin-bottom:0">학생에게 연락한 뒤 "확인"을 누르세요. 날짜를 바꾸려면 학생 상세 → 면담 일정에서 고쳐요.</p></div></section>` : ''}
         ${delReqs.length ? `<section class="card" style="border-color:var(--red)"><div class="card-head"><h3>삭제 요청</h3><span class="pill red">${delReqs.length}</span></div>
           <div class="card-body"><div class="list">${delReqs.map(s => `<div class="li" style="align-items:flex-start"><div class="main"><a class="t" href="#/students/${s.id}" style="text-decoration:none">${esc(s.name)}</a><div class="s">요청 ${esc(s.deleteRequest.byName || '')} · ${fmt(s.deleteRequest.at)} · 담당 ${esc(staffName(s.mentorId))}</div><div class="s">사유: ${esc(s.deleteRequest.reason || '-')}</div></div><div class="row" style="flex-wrap:nowrap;gap:4px">${deleteButton(s)}</div></div>`).join('')}</div></div></section>` : ''}
         ${cohorts.length ? `<section class="card" style="border-color:var(--brand)"><div class="card-head"><h3>다음 기수 연결</h3><span class="pill green">${cohorts.length}</span></div>
           <div class="card-body"><div class="list">${cohorts.map((x, i) => `<div class="li" style="align-items:flex-start"><div class="main"><div class="t">${esc(x.from.name)}</div><div class="s">${fmt(x.from.endDate)} 종강 → ${esc(x.to.name)} ${fmt(x.to.startDate)} 개강</div><div class="s">아직 안 옮긴 학생 ${x.studs.length}명</div></div><button class="btn sm primary" data-act="cohort-move" data-i="${i}">연결</button></div>`).join('')}</div></div></section>` : ''}
+        ${renew.length ? `<section class="card"><div class="card-head"><h3>종강 예정 · 다음 과정</h3><span class="faint">2주 안 종강 · 이어 들을 수업 없음</span></div>
+          <div class="card-body"><div class="list">${renew.slice(0, 15).map(x => `<div class="li" style="align-items:flex-start"><div class="main"><a class="t" href="#/students/${x.s.id}" style="text-decoration:none">${esc(x.s.name)}</a><div class="s">${esc(x.c.name)} · ${fmt(x.end)} 종강 · 담당 ${esc(staffName(x.s.mentorId))}</div><div class="s">${x.next ? `추천: <b>${esc(x.next.name)}</b> ${fmt(x.next.startDate)} 개강` : '같은 과정 다음 기수 없음'}</div></div>
+            <select class="in" style="width:auto;height:32px" data-change="renew-set" data-id="${x.s.id}" data-end="${x.end}">${[['', '상담 전'], ['상담함', '상담함'], ['재등록', '재등록'], ['안 함', '안 함']].map(([v, l]) => opt(v, l, x.state)).join('')}</select></div>`).join('')}${renew.length > 15 ? `<div class="faint">외 ${renew.length - 15}명</div>` : ''}</div>
+          <p class="faint" style="margin-bottom:0">"재등록"이나 "안 함"으로 바꾸면 목록에서 빠져요. 다음 기수로 옮기는 건 위 "다음 기수 연결"에서 해요.</p></div></section>` : ''}
         <section class="card"><div class="card-head"><h3>다가오는 면담</h3><span class="faint">2주</span></div>
           <div class="card-body">${meetings.length ? `<div class="list">${meetings.map(x => { const s = Store.get('students', x.studentId); return `<a class="li" href="#/students/${x.studentId}/notes"><span class="pill outline">${fmt(x.date)}</span><div class="main"><div class="t">${esc(s ? s.name : '')}</div><div class="s">${esc(x.time || '')} ${esc(x.topic || '')}</div></div></a>`; }).join('')}</div>` : '<div class="empty">예정된 면담이 없어요</div>'}</div></section>
         <section class="card"><div class="card-head"><h3>다가오는 시험</h3><a class="btn sm" href="#/exams">전체</a></div>
@@ -729,7 +764,7 @@
     const studs = students();
     const viewToggle = `<div class="seg"><button class="${ui.classView === 'cards' ? 'on present' : ''}" data-act="class-view" data-v="cards">카드</button><button class="${ui.classView === 'grid' ? 'on present' : ''}" data-act="class-view" data-v="grid">시간표</button><button class="${ui.classView === 'list' ? 'on present' : ''}" data-act="class-view" data-v="list">목록</button></div>`;
     const head = `<div class="page-head"><div><h1>수업</h1><p>반별 수강생을 보고, 학생과 수업을 연결해요</p></div>
-      <div class="row">${viewToggle}${isLead() ? '<button class="btn" data-act="class-import">시간표 파일로 등록</button><button class="btn primary" data-act="class-new">+ 수업 추가</button>' : ''}</div></div>`;
+      <div class="row">${viewToggle}<button class="btn" data-act="room-finder">빈 강의실 찾기</button>${isLead() ? '<button class="btn" data-act="class-import">시간표 파일로 등록</button><button class="btn primary" data-act="class-new">+ 수업 추가</button>' : ''}</div></div>`;
     if (ui.classView === 'grid') return head + classGrid(all);
     const chips = `<div class="row" style="margin-bottom:16px;gap:12px"><div class="chips"><button class="chip ${!ui.classArchived ? 'on' : ''}" data-act="class-arch" data-v="0">진행·예정<b>${all.filter(c => !classEnded(c)).length}</b></button><button class="chip ${ui.classArchived ? 'on' : ''}" data-act="class-arch" data-v="1">종료<b>${all.filter(classEnded).length}</b></button></div>${searchBar()}</div>`;
     if (ui.classView === 'list') {
@@ -952,11 +987,58 @@
         </tbody></table>` : '<div class="empty">아직 연결된 학생이 없어요. "학생 연결"을 눌러 고르세요.</div>'}
       </div></section>
     </div>
+    ${attendanceCard(c, roster)}
     ${classNoticeCard(c)}
     ${noticeCard(c, roster)}
     ${zoomCard(c)}
     ${recordingsCard(c)}`;
   }
+  // 빈 강의실 찾기: 요일 · 시간 · 기간을 고르면 그때 비는 강의실 (온라인 · 비대면 강의실은 뺌)
+  function roomFinder() {
+    const t = today();
+    const toMin = x => { const [h, m] = String(x || '0:0').split(':').map(Number); return h * 60 + m; };
+    const rooms = Array.from(new Set(Store.all('classes').map(c => c.room).filter(r => r && !/온라인|비대면/.test(r)))).sort((a, b) => a.localeCompare(b, 'ko'));
+    const calc = root => {
+      const v = vals(root), days = (v.days || []).map(Number);
+      const out = root.querySelector('#rf-out');
+      if (!days.length || !v.start || !v.end || !v.from || !v.to || v.start >= v.end || v.from > v.to) { out.innerHTML = '<div class="faint">요일 · 시간 · 기간을 모두 골라주세요</div>'; return; }
+      const busy = r => Store.all('classes').filter(c => c.room === r && !c.archived && c.start && c.end && (c.startDate || '0') <= v.to && (c.endDate || '9') >= v.from
+        && (c.days || []).some(d => days.includes(d)) && toMin(c.start) < toMin(v.end) && toMin(v.start) < toMin(c.end));
+      const rs = rooms.map(r => ({ r, hit: busy(r) }));
+      out.innerHTML = `<div style="margin-bottom:8px"><b>빈 강의실 ${rs.filter(x => !x.hit.length).length}곳</b></div><div class="row" style="gap:6px;margin-bottom:14px">${rs.filter(x => !x.hit.length).map(x => `<span class="pill green">${esc(x.r)}</span>`).join('') || '<span class="faint">없어요</span>'}</div>
+        <div class="faint" style="margin-bottom:6px">사용 중</div><div class="list">${rs.filter(x => x.hit.length).map(x => `<div class="li"><span class="pill">${esc(x.r)}</span><div class="main"><div class="s">${x.hit.map(c => `${esc(c.name)} (${classTime(c)}, ${classPeriod(c)})`).join('<br>')}</div></div></div>`).join('') || '<div class="faint">없어요</div>'}</div>`;
+    };
+    openModal('빈 강의실 찾기', `<div class="form" id="rf-form">
+      <div class="field"><label>요일</label><div class="row" style="gap:6px">${[1, 2, 3, 4, 5, 6, 0].map(d => `<label class="pill outline" style="cursor:pointer"><input type="checkbox" name="days" data-multi value="${d}"> ${DAYS[d]}</label>`).join('')}</div></div>
+      <div class="grid g2">${field('시작', `<input class="in" type="time" name="start" value="19:00">`)}${field('끝', `<input class="in" type="time" name="end" value="22:00">`)}</div>
+      <div class="grid g2">${field('기간 시작', `<input class="in" type="date" name="from" value="${t}">`)}${field('기간 끝', `<input class="in" type="date" name="to" value="${addDays(t, 30)}">`)}</div>
+      <div id="rf-out" style="margin-top:6px"></div></div>`, { wide: true, onOpen: bg => { const f = bg.querySelector('#rf-form'); f.addEventListener('input', () => calc(f)); f.addEventListener('change', () => calc(f)); calc(f); } });
+  }
+
+  // 회차별 출석 체크: 고른 회차(기본은 가장 최근 수업일)에 학생마다 출석 · 지각 · 결석
+  ui.attDate = {};
+  function attendanceCard(c, roster) {
+    const t = today(), past = U.sessions(c).filter(d => d <= t);
+    if (!roster.length || !past.length) return '';
+    const d = past.includes(ui.attDate[c.id]) ? ui.attDate[c.id] : past[past.length - 1];
+    const att = Store.all('attendance').filter(a => a.classId === c.id);
+    const cur = sid => (att.find(a => a.studentId === sid && a.date === d) || {}).state;
+    const N = U.sessions(c).length, marked = roster.filter(s => cur(s.id)).length;
+    return `<section class="card" style="margin-top:16px"><div class="card-head"><h3>출석 체크 <span class="faint" style="font-weight:600">${marked}/${roster.length}</span></h3><span class="faint">결석이 2번 이어지거나 3번 넘으면 '오늘' 화면의 챙겨야 할 학생에 떠요</span></div>
+      <div class="card-body"><div class="row" style="margin-bottom:10px;justify-content:space-between">
+        <select class="in" style="width:auto" data-change="att-date" data-id="${c.id}">${past.slice().reverse().map(x => opt(x, `${U.sessions(c).indexOf(x) + 1}/${N}회 · ${fmt(x)}${x === t ? ' (오늘)' : ''}`, d)).join('')}</select>
+        <button class="btn sm" data-act="att-all" data-cid="${c.id}" data-date="${d}">아직 안 찍은 학생 모두 출석</button></div>
+        <div class="list">${roster.map(s => { const st = cur(s.id), abs = att.filter(a => a.studentId === s.id && a.state === 'absent').length; return `<div class="li"><div class="main"><div class="t">${esc(s.name)}</div><div class="s">${esc(staffName(s.mentorId))}${abs ? ` · <b style="color:var(--red)">결석 ${abs}회</b>` : ''}</div></div>
+          <div class="seg">${Object.entries(ATT).map(([k, l]) => `<button class="${st === k ? 'on present' : ''}" data-act="att-set" data-sid="${s.id}" data-cid="${c.id}" data-date="${d}" data-state="${k}">${l}</button>`).join('')}</div></div>`; }).join('')}</div>
+      </div></section>`;
+  }
+  async function setAttendance(sid, cid, date, state) {
+    const id = `${cid}_${date}_${sid}`;
+    const cur = Store.get('attendance', id);
+    if (cur && cur.state === state) return Store.del('attendance', id);  // 같은 버튼 다시 누르면 지움
+    return Store.put('attendance', { id, studentId: sid, classId: cid, date, state });
+  }
+
   // 이 수업 학생들에게 보낼 개강 안내문: 시간표(개강·종강·시간·강의장·출석일)로 자동 작성, 학생마다 링크만 달라짐
   const noticeCopied = new Set();
   function noticeCard(c, roster) {
@@ -1289,9 +1371,27 @@
       <section class="card"><div class="card-head"><h3>월별 신규 등록</h3></div><div class="card-body"><div class="bars">${byMonth.map(x => `<div class="bar"><b>${x.n}</b><i style="height:${x.n / max * 100}%"></i><span>${Number(x.k.slice(5))}월</span></div>`).join('')}</div></div></section>
       <section class="card"><div class="card-head"><h3>직원별 상담 기록</h3><span class="faint">기간 내 작성 건수</span></div><div class="card-body">${noteRows.map(r => `<div style="margin-bottom:12px"><div class="row" style="justify-content:space-between"><span>${esc(r.m.name)} <span class="faint">${esc(roleLabel(r.m))}</span></span><b>${r.n}건</b></div><div class="meter" style="margin-top:6px"><i style="width:${r.n / noteMax * 100}%"></i></div></div>`).join('') || '<div class="faint">아직 상담 기록이 없어요</div>'}</div></section>
     </div>
+    ${surveyReport()}
     <section class="card tbl-wrap" style="margin-top:16px"><div class="card-head"><h3>담당자별 성과</h3><span class="faint">상태 변경 이력 기준</span></div><div class="card-body">
       <table class="tbl"><thead><tr><th>담당</th><th class="hide-m">팀</th><th class="num">진행 중</th><th class="num">신규</th><th class="num">합격</th><th class="num">취업·진학</th><th class="num">이탈</th><th class="num">상담 기록</th></tr></thead><tbody>
       ${rows.map(r => `<tr><td><b>${esc(r.m.name)}</b> <span class="faint">${esc(roleLabel(r.m))}</span></td><td class="hide-m">${esc(teamFull(r.m.teamId))}</td><td class="num">${r.ongoing}</td><td class="num">${r.neu}</td><td class="num">${r.pass}</td><td class="num">${r.job}</td><td class="num">${r.drop}</td><td class="num">${r.notes}</td></tr>`).join('')}
+      </tbody></table></div></section>`;
+  }
+
+  // 수업 만족도: 반별 중간 · 종강 평균 별점과 의견 (학생 이름은 안 보여 줌)
+  function surveyReport() {
+    const all = Store.all('surveys');
+    if (!all.length) return `<section class="card card-pad" style="margin-top:16px"><b>수업 만족도</b><p class="faint" style="margin-bottom:0">아직 들어온 설문이 없어요. 학생 화면에서 수업 절반이 지나면 '중간 점검', 마지막 회차 무렵엔 '종강 설문'이 떠요.</p></section>`;
+    const avg = l => l.length ? (l.reduce((n, v) => n + Number(v.score || 0), 0) / l.length).toFixed(1) : '-';
+    const rows = sortBy(Array.from(new Set(all.map(v => v.classId))).map(cid => {
+      const c = Store.get('classes', cid) || { name: '(삭제된 수업)' }, l = all.filter(v => v.classId === cid);
+      return { c, l, mid: l.filter(v => v.kind === 'mid'), fin: l.filter(v => v.kind === 'final') };
+    }), x => x.c.startDate || '').reverse();
+    return `<section class="card tbl-wrap" style="margin-top:16px"><div class="card-head"><h3>수업 만족도</h3><span class="faint">별점 5점 만점 · 학생 이름 없이 모아 보여요</span></div><div class="card-body">
+      <table class="tbl"><thead><tr><th>수업</th><th class="hide-m">강사</th><th class="num">중간</th><th class="num">종강</th><th>의견</th></tr></thead><tbody>
+      ${rows.map(x => { const cm = sortBy(x.l.filter(v => v.comment), v => v.at || '').reverse(); return `<tr><td><b>${esc(x.c.name)}</b><div class="faint">${x.c.startDate ? classPeriod(x.c) : ''}</div></td><td class="hide-m">${esc(x.c.instructor || '')}</td>
+        <td class="num">${avg(x.mid)} <span class="faint">(${x.mid.length})</span></td><td class="num">${avg(x.fin)} <span class="faint">(${x.fin.length})</span></td>
+        <td>${cm.length ? `<details><summary class="faint" style="cursor:pointer">${cm.length}개 보기</summary>${cm.map(v => `<div style="padding:6px 0;border-top:1px solid var(--line-2)"><span class="pill outline">${v.kind === 'final' ? '종강' : '중간'} ★${v.score}</span> ${esc(v.comment)}</div>`).join('')}</details>` : '<span class="faint">-</span>'}</td></tr>`; }).join('')}
       </tbody></table></div></section>`;
   }
 
@@ -1854,6 +1954,19 @@
       toast('백업 파일을 받았어요. 공용 드라이브에 보관하세요');
       render();
     },
+    'room-finder': () => roomFinder(),
+    'att-set': async el => { await setAttendance(el.dataset.sid, el.dataset.cid, el.dataset.date, el.dataset.state); render(); },
+    'att-all': async el => {
+      const c = Store.get('classes', el.dataset.cid), d = el.dataset.date;
+      const todo = students().filter(s => (s.classIds || []).includes(c.id) && !Store.get('attendance', `${c.id}_${d}_${s.id}`));
+      for (const s of todo) await setAttendance(s.id, c.id, d, 'present');
+      toast(`${todo.length}명 출석으로 찍었어요`); render();
+    },
+    'req-seen': async el => {
+      const m = Store.get('meetings', el.dataset.id); if (!m) return;
+      m.request = { ...m.request, seen: true, seenBy: me().name, seenAt: new Date().toISOString() };
+      await Store.put('meetings', m); toast("학생 화면에 '멘토 확인'으로 보여요"); render();
+    },
     'file-del': async el => {
       const f = Store.get('files', el.dataset.id); if (!f) return;
       if (!(await confirmBox(`'${f.name}' 자료를 지울까요? 학생 화면에서도 사라져요.`, '삭제'))) return;
@@ -1887,6 +2000,12 @@
       e.studentIds = Array.from(set); await Store.put('exams', e); render();
     },
     'task-toggle': async el => { const k = Store.get('tasks', el.dataset.id); k.done = el.checked; await Store.put('tasks', k); render(); },
+    'att-date': el => { ui.attDate[el.dataset.id] = el.value; render(); },
+    'renew-set': async el => {
+      const s = Store.get('students', el.dataset.id);
+      s.renewal = { state: el.value, end: el.dataset.end, at: new Date().toISOString(), by: me().name };
+      await Store.put('students', s); toast(el.value ? `${s.name}: ${el.value}` : '되돌렸어요'); render();
+    },
     'file-upload': async el => {
       const files = Array.from(el.files || []); if (!files.length) return;
       const big = files.find(f => f.size > 50 * 1048576);

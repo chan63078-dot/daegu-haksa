@@ -3,8 +3,8 @@
 // - 실제 모드: Supabase 의 items 테이블 하나에 컬렉션별로 저장, 권한은 DB(RLS)가 판단
 (function () {
   const C = window.HAKSA_CONFIG || {};
-  const COLS = ['teams', 'staff', 'students', 'classes', 'attendance', 'notes', 'meetings', 'tasks', 'exams', 'leads', 'logs', 'settings', 'branchClasses', 'files'];
-  const STUDENT_SCOPED = ['attendance', 'notes', 'meetings', 'tasks'];
+  const COLS = ['teams', 'staff', 'students', 'classes', 'attendance', 'notes', 'meetings', 'tasks', 'exams', 'leads', 'logs', 'settings', 'branchClasses', 'files', 'surveys'];
+  const STUDENT_SCOPED = ['attendance', 'notes', 'meetings', 'tasks', 'surveys'];
   const LS_KEY = 'daegu-haksa-v3';  // 데모 데이터 구조가 바뀌면 숫자를 올림
   const LS_ME = 'daegu-haksa-me';
   // 주소에 ?demo 를 붙이면 실제 DB 대신 연습용 데모 모드 (교육·테스트용)
@@ -236,7 +236,8 @@
         classes: db.classes.filter(c => (s.classIds || []).includes(c.id)),
         attendance: db.attendance.filter(a => a.studentId === s.id).map(({ classId, date, state }) => ({ classId, date, state })),
         tasks: db.tasks.filter(t => t.studentId === s.id && t.shared !== false),
-        meetings: db.meetings.filter(m => m.studentId === s.id && !m.done).map(({ date, time, topic }) => ({ date, time, topic })),
+        meetings: db.meetings.filter(m => m.studentId === s.id && !m.done).map(({ id, date, time, topic, request }) => ({ id, date, time, topic, request })),
+        surveys: db.surveys.filter(v => v.studentId === s.id).map(({ classId, kind }) => ({ classId, kind })),
         exams: db.exams.filter(e => (e.studentIds || []).includes(s.id)).map(({ id, name, regStart, regEnd, examDate, examEnd, resultDate, memo }) => ({ id, name, regStart, regEnd, examDate, examEnd, resultDate, memo })),
         allExams: db.exams.map(({ id, name, regStart, regEnd, examDate, examEnd, resultDate, memo }) => ({ id, name, regStart, regEnd, examDate, examEnd, resultDate, memo })),
         files: db.files.map(({ id, name, size, url }) => ({ id, name, size, url }))
@@ -251,6 +252,32 @@
       const s = db.students.find(x => x.token === token);
       const t = db.tasks.find(x => x.id === taskId && s && x.studentId === s.id);
       if (t) { t.done = done; saveLocal(); }
+    },
+
+    // 학생: 수업 만족도 설문 (중간 mid · 종강 final)
+    async studentSurvey(token, classId, kind, score, comment) {
+      if (live) {
+        const { error } = await sb.rpc('student_submit_survey', { p_token: token, p_class: classId, p_kind: kind, p_score: score, p_comment: comment || '' });
+        if (error) throw error;
+        return;
+      }
+      const s = db.students.find(x => x.token === token);
+      if (!s || !(s.classIds || []).includes(classId)) throw new Error('invalid');
+      const id = `${s.id}:${classId}:${kind}`;
+      db.surveys = db.surveys.filter(v => v.id !== id).concat({ id, studentId: s.id, classId, kind, score, comment: comment || '', at: new Date().toISOString() });
+      saveLocal();
+    },
+    // 학생: 면담 · 질문 신청 → 담당 멘토의 '오늘' 화면에 뜸
+    async studentRequestMeeting(token, date, time, text) {
+      if (live) {
+        const { error } = await sb.rpc('student_request_meeting', { p_token: token, p_date: date, p_time: time || '', p_text: text });
+        if (error) throw error;
+        return;
+      }
+      const s = db.students.find(x => x.token === token);
+      if (!s) throw new Error('invalid');
+      db.meetings.push({ id: uid(), studentId: s.id, date, time: time || '', topic: '학생 신청: ' + text.slice(0, 40), done: false, request: { text, at: new Date().toISOString(), seen: false } });
+      saveLocal();
     },
 
     // 공개 상담 신청 폼

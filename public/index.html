@@ -102,6 +102,14 @@
     .x-name b { font-size: 14px; line-height: 1.35; word-break: keep-all; overflow-wrap: anywhere; }
     .x-name span { font-size: 12px; color: var(--ink-3); }
     .x-act { flex: none; font-size: 13px; font-weight: 700; color: var(--brand); }
+    .x-survey { padding: 16px 18px; border-color: var(--amber); grid-column: 1 / -1; }
+    .x-stars { display: flex; gap: 6px; margin: 14px 0 10px; }
+    .x-stars button { flex: 1; height: 48px; font-size: 26px; line-height: 1; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--line); cursor: pointer; }
+    .x-stars button.on { color: #f5a524; border-color: #f5a524; background: #fff8e6; }
+    .x-survey textarea, .x-form textarea { width: 100%; margin-bottom: 8px; font-size: 15px; }
+    .x-form { margin-top: 12px; display: grid; gap: 8px; }
+    .x-form .in { height: 44px; font-size: 15px; } .x-form textarea.in { height: auto; }
+    .x-wide { width: 100%; height: 46px; justify-content: center; font-size: 15px; font-weight: 700; }
 
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; }
@@ -247,11 +255,13 @@
     function extras() {
       const feed = C.SUPABASE_URL && !Store.forceDemo ? `${C.SUPABASE_URL.replace(/^https?:/, 'webcal:')}/functions/v1/calendar-feed?t=${encodeURIComponent(token)}` : '';
       return `<div class="extras">
+        ${surveyBox()}
         <a class="x-career" href="https://url.kr/mreprs" target="_blank" rel="noopener">
           <span class="x-ico">🧭</span><span class="x-txt"><b>IT 진로 · 적성 검사</b><span>5분이면 나와 잘 맞는 IT 분야 TOP 3가 보여요</span></span><span class="x-go">시작 ›</span></a>
         ${feed ? `<section class="card x-sub"><div class="x-head"><span class="x-ico soft">📲</span><div><b>내 휴대폰 캘린더에 추가</b><span>한 번만 누르면 수업 일정이 휴대폰에 들어가요</span></div></div>
           <ul class="x-bul"><li>수업 2시간 전 · 개강 3일 전 알림</li><li>자격증 접수 10일 · 5일 전 · 당일 알림</li><li>일정이 바뀌면 자동으로 따라 바뀌어요</li></ul>
           <div class="x-btns"><a class="btn primary" href="${esc(feed)}">아이폰 · 맥</a><a class="btn" href="https://calendar.google.com/calendar/render?cid=${encodeURIComponent(feed)}" target="_blank" rel="noopener">구글 · 안드로이드</a></div></section>` : ''}
+        ${requestBox()}
         ${filesBox()}
       </div>`;
     }
@@ -269,6 +279,35 @@
       if (!rows.length) return '';
       return `<section class="card"><div class="card-head"><h3>🎓 자격증 접수 · 시험 7일 이내</h3><span class="faint">${rows.length}건</span></div><div class="card-body"><div class="list">${rows.sort((x, y) => x.a.localeCompare(y.a)).map(r => r.html).join('')}</div></div></section>`;
     }
+    // 수업 만족도: 회차 절반이 지나면 '중간', 마지막 회차 무렵엔 '종강' 설문 (종강 2주 뒤까지)
+    function surveysDue() {
+      const done = new Set((data.surveys || []).map(v => v.classId + ':' + v.kind));
+      return items.filter(x => x.kind === 'class' && x.ss.length >= 2 && !(x.c.endDate && addDays(x.c.endDate, 14) < t)).map(x => {
+        const N = x.ss.length, passed = x.ss.filter(d => d <= t).length;
+        const kind = passed >= N - 1 ? 'final' : passed >= Math.ceil(N / 2) ? 'mid' : null;
+        return kind && !done.has(x.c.id + ':' + kind) ? { c: x.c, kind } : null;
+      }).filter(Boolean);
+    }
+    function surveyBox() {
+      return surveysDue().map(({ c, kind }) => `<section class="card x-survey" data-survey="${esc(c.id)}">
+        <div class="x-head"><span class="x-ico soft">⭐</span><div><b>${kind === 'final' ? '종강 설문' : '중간 점검'} · ${esc(c.name)}</b><span>${kind === 'final' ? '수업은 어떠셨어요? 다음 수업을 더 좋게 만드는 데 써요' : '지금까지 수업 어떠세요? 30초면 끝나요'}</span></div></div>
+        <div class="x-stars" role="radiogroup" aria-label="별점">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-act="star" data-n="${n}" aria-label="${n}점">★</button>`).join('')}</div>
+        <textarea class="in" rows="2" maxlength="500" placeholder="좋았던 점이나 바라는 점을 한 줄 남겨 주세요 (선택)"></textarea>
+        <button class="btn primary x-wide" data-act="survey-send" data-cid="${esc(c.id)}" data-kind="${kind}">보내기</button>
+        <div class="faint" style="font-size:12px;margin-top:6px">담당 선생님과 학원만 봐요.</div></section>`).join('');
+    }
+    // 면담 · 질문 신청 → 담당 멘토가 확인 후 연락
+    function requestBox() {
+      const reqs = (data.meetings || []).filter(m => m.request).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      return `<section class="card x-sub"><div class="x-head"><span class="x-ico soft">💬</span><div><b>멘토에게 면담 · 질문 신청</b><span>원하는 날짜와 궁금한 점을 남기면 멘토가 확인하고 연락드려요</span></div></div>
+        <div class="x-form" id="req-form">
+          <div class="x-btns"><input class="in" type="date" name="date" value="${addDays(t, 1)}" min="${t}" max="${addDays(t, 60)}" aria-label="희망 날짜"><input class="in" type="time" name="time" aria-label="희망 시간 (선택)"></div>
+          <textarea class="in" name="text" rows="2" maxlength="300" placeholder="예: 포트폴리오 방향이 궁금해요 / 자격증 일정 상담"></textarea>
+          <button class="btn primary x-wide" data-act="meet-req">신청하기</button>
+        </div>
+        ${reqs.length ? `<div class="list" style="margin-top:12px">${reqs.map(m => `<div class="li"><div class="main"><div class="t">${fmt(m.date)} ${esc(m.time || '')}</div><div class="s">${esc(m.request.text || '')}</div></div><span class="pill ${m.request.seen ? 'green' : 'amber'}">${m.request.seen ? '멘토 확인' : '확인 대기'}</span></div>`).join('')}</div>` : ''}
+      </section>`;
+    }
     // 학생 자료실 (직원이 관리자 화면 설정에서 올림)
     const fsize = n => !n ? '' : n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB';
     function filesBox() {
@@ -284,6 +323,9 @@
           <span class="x-act">${video(f) ? '보기' : '받기 ↓'}</span></a>`).join('')}</div></details>`;
     }
 
+    // 출석 기록이 있으면 '출석 n · 지각 n · 결석 n'
+    const attText = cid => { const a = (data.attendance || []).filter(r => r.classId === cid); if (!a.length) return ''; const n = k => a.filter(r => r.state === k).length; return ` · 출석 ${n('present')}${n('late') ? ` · 지각 ${n('late')}` : ''}${n('absent') ? ` · <b style="color:var(--red)">결석 ${n('absent')}</b>` : ''}`; };
+
     function side() {
       const list = (byDate[ui.sel] || []);
       const tasks = data.tasks.slice().sort((a, b) => (a.done - b.done) || ((a.due || '9') < (b.due || '9') ? -1 : 1));
@@ -293,7 +335,7 @@
         const st = (x.c.endDate || '') < t ? '종료' : (x.c.startDate || '') > t ? `개강 ${dday(x.c.startDate)}` : '진행 중';
         return `<div class="course"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><b style="font-size:14px">${esc(x.c.name)}</b><span class="tag ${x.kind}">${x.kind === 'plan' ? '집에서' : st}</span></div>
           <div class="faint">${fmt(x.c.startDate)}~${fmt(x.c.endDate)} · ${(x.c.days || []).map(d => DAYS[d]).join('·')}${x.kind === 'class' && x.c.start ? ' ' + esc(x.c.start) : ''}${x.c.room ? ' · ' + esc(x.c.room) : ''}</div>
-          ${N ? `<div class="meter"><i style="width:${Math.round(done / N * 100)}%"></i></div><div class="faint">${done}/${N}회 진행</div>` : ''}</div>`;
+          ${N ? `<div class="meter"><i style="width:${Math.round(done / N * 100)}%"></i></div><div class="faint">${done}/${N}회 진행${attText(x.c.id)}</div>` : ''}</div>`;
       };
       return `<div class="side">
         ${noticeBox()}
@@ -349,6 +391,25 @@
       if (day) { ui.sel = day.dataset.d; render(); if (window.innerWidth <= 900) document.querySelector('.side').scrollIntoView({ behavior: 'smooth' }); return; }
       const b = e.target.closest('[data-act]');
       if (!b) return;
+      if (b.dataset.act === 'star') { const box = b.closest('[data-survey]'); box.dataset.score = b.dataset.n; box.querySelectorAll('[data-act=star]').forEach(x => x.classList.toggle('on', Number(x.dataset.n) <= Number(b.dataset.n))); return; }
+      if (b.dataset.act === 'survey-send') {
+        const box = b.closest('[data-survey]'), score = Number(box.dataset.score || 0);
+        if (!score) { alert('별점을 골라 주세요'); return; }
+        b.disabled = true;
+        Store.studentSurvey(token, b.dataset.cid, b.dataset.kind, score, box.querySelector('textarea').value.trim())
+          .then(() => { data.surveys = (data.surveys || []).concat({ classId: b.dataset.cid, kind: b.dataset.kind }); render(); alert('보내 주셔서 고마워요!'); })
+          .catch(() => { b.disabled = false; alert('보내지 못했어요. 잠시 후 다시 시도해 주세요.'); });
+        return;
+      }
+      if (b.dataset.act === 'meet-req') {
+        const f = document.getElementById('req-form'), v = k => f.querySelector(`[name=${k}]`).value.trim();
+        if (!v('date') || !v('text')) { alert('날짜와 내용을 넣어 주세요'); return; }
+        b.disabled = true;
+        Store.studentRequestMeeting(token, v('date'), v('time'), v('text'))
+          .then(() => Store.studentView(token)).then(d => { data.meetings = d.meetings; render(); alert('신청했어요. 멘토가 확인하고 연락드릴게요.'); })
+          .catch(err => { b.disabled = false; alert(/too many/.test(err && err.message) ? '확인을 기다리는 신청이 3개 있어요. 멘토 확인 후 다시 신청해 주세요.' : '신청하지 못했어요. 날짜(오늘~60일 안)와 내용을 확인해 주세요.'); });
+        return;
+      }
       const [y, m] = ui.month.split('-').map(Number);
       const go = k => { const d = new Date(y, m - 1 + k, 1); ui.month = iso(d).slice(0, 7); };
       if (b.dataset.act === 'prev') go(-1);
