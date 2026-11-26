@@ -240,8 +240,10 @@
     function filesBox() {
       const list = (data.files || []).filter(f => /^https:\/\//i.test(f.url || ''));
       if (!list.length) return '';
-      return `<section class="card"><div class="card-head"><h3>📎 자료</h3><span class="faint">눌러서 내려받기</span></div><div class="card-body"><div class="list">
-        ${list.map(f => `<a class="li" style="text-decoration:none;color:inherit" href="${esc(f.url)}?download=${encodeURIComponent(f.name)}"><div class="main"><div class="t">${esc(f.name)}</div><div class="s">${fsize(f.size)}</div></div><span class="btn sm">받기 ↓</span></a>`).join('')}
+      // 동영상은 내려받지 않고 새 창에서 바로 재생
+      const video = f => /\.(mp4|webm|mov|m4v)$/i.test(f.name || '');
+      return `<section class="card"><div class="card-head"><h3>📎 자료</h3><span class="faint">눌러서 보기 · 내려받기</span></div><div class="card-body"><div class="list">
+        ${list.map(f => `<a class="li" style="text-decoration:none;color:inherit" href="${esc(f.url)}${video(f) ? '' : '?download=' + encodeURIComponent(f.name)}"${video(f) ? ' target="_blank" rel="noopener"' : ''}><div class="main"><div class="t">${esc(f.name.replace(/\.[^.]+$/, ''))}</div><div class="s">${video(f) ? '동영상 · ' : ''}${fsize(f.size)}</div></div><span class="btn sm${video(f) ? ' primary' : ''}">${video(f) ? '▶ 보기' : '받기 ↓'}</span></a>`).join('')}
       </div></div></section>`;
     }
 
