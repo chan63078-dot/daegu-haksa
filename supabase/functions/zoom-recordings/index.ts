@@ -1,10 +1,10 @@
 // 줌 클라우드 녹화본 → 수업 회차별 녹화본 자동 채우기 (Supabase Edge Function: zoom-recordings)
-// 매일 밤 pg_cron 이 호출. 줌 키는 Supabase 비밀값(ZOOM_ACCOUNT_ID/CLIENT_ID/CLIENT_SECRET)에만 있음.
+// pg_cron 이 수업 중·수업 후에 호출. 줌 키는 Supabase 비밀값(ZOOM_ACCOUNT_ID/CLIENT_ID/CLIENT_SECRET)에만 있음.
 //
 // 규칙
 // - 수업의 줌 회의 ID + 녹화 날짜(한국 시간)가 수업 기간 안이면 그 날짜 회차에 넣음
-// - 수업 시간의 절반보다 짧은 녹화는 무시, 같은 날 여러 개면 가장 긴 것
-// - 이미 링크가 있는 회차는 건드리지 않음
+// - 수업 중에는 녹화 중인 링크를 미리 넣음(auto), 끝난 뒤엔 수업 시간 절반 이상 녹화 중 가장 긴 것으로 확정
+// - 손으로 넣은 링크(auto 표시 없음)는 건드리지 않음
 // - 넣은 녹화본은 '보기 권한자 다운로드 가능'을 끔
 //
 // 요청 본문(JSON, 선택): { days?: 기본 2 (최대 30), dry?: true 면 저장 없이 결과만,
@@ -57,6 +57,9 @@ async function listRecordings(token: string, from: string, to: string) {
   return out;
 }
 
+// 아직 녹화 중이거나 처리 중인 녹화 (파일 상태가 completed 가 아니거나 끝 시각이 없음)
+const inProgress = (m: any) => !(m.recording_files || []).length || (m.recording_files || []).some((f: any) => (f.status && f.status !== 'completed') || !f.recording_end);
+
 // 녹화 길이(분): 영상 파일들의 처음 시작 ~ 마지막 끝
 function recMinutes(m: any) {
   const f = (m.recording_files || []).filter((x: any) => x.recording_start && x.recording_end);
@@ -107,7 +110,7 @@ Deno.serve(async req => {
       // 같은 회의 ID 수업 기간이 겹치면 그 요일 수업을 우선
       const dow = new Date(d + 'T00:00:00Z').getUTCDay();
       const c = hits.find((x: any) => (x.days || []).includes(dow)) || hits[0];
-      if (dry) seen.push({ date: d, topic: m.topic, meetingId: mid, minutes: recMinutes(m), class: c?.name || null, filled: !!c?.recordings?.[d]?.url });
+      seen.push({ date: d, topic: m.topic, meetingId: mid, minutes: recMinutes(m), live: inProgress(m), share: !!m.share_url, files: (m.recording_files || []).map((f: any) => f.status).join(','), class: c?.name || null });
       if (!c) continue;
       const k = c.id + '|' + d;
       if (!cand.has(k)) cand.set(k, { c, d, list: [] });
@@ -115,14 +118,23 @@ Deno.serve(async req => {
     }
 
     const changed = new Map<string, any>(), report: any[] = [];
+    const today = kstDate(new Date().toISOString());
+    const nowMin = mins(new Date(Date.now() + 9 * 3600e3).toISOString().slice(11, 16));
     for (const { c, d, list } of cand.values()) {
       const cur = (changed.get(c.id) || c).recordings || {};
-      if (cur[d]?.url) continue;
+      const had = cur[d] || {};
+      if (had.url && !had.auto) continue; // 손으로 넣은 링크는 그대로
       const need = Math.floor((mins(c.end) - mins(c.start)) / 2);
-      const best = list.map(m => ({ m, len: recMinutes(m) })).sort((a, b) => b.len - a.len)[0];
+      const sorted = list.map(m => ({ m, len: recMinutes(m), live: inProgress(m) })).sort((a, b) => b.len - a.len);
+      const done = sorted.find(x => !x.live && x.len >= need && x.m.share_url);
+      // 수업 중(당일, 종료 30분 전까지)이면 녹화 중인 링크를 미리 넣음 → 끝난 뒤 실행에서 가장 긴 녹화로 확정
+      const during = d === today && nowMin <= mins(c.end) + 30;
+      const early = during && !had.url ? (sorted.find(x => x.live && x.m.share_url) || sorted.find(x => x.m.share_url)) : undefined;
+      const best = done || early;
       let entry;
-      if (best.len >= need && best.m.share_url) {
-        entry = { url: best.m.share_url, note: best.m.password || best.m.recording_play_passcode || '' };
+      if (best) {
+        if (had.url === best.m.share_url) continue;
+        entry = { url: best.m.share_url, note: best.m.password || best.m.recording_play_passcode || '', auto: true };
         if (!dry) {
           const r = await fetch(`${ZOOM}/meetings/${enc(best.m.uuid)}/recordings/settings`, {
             method: 'PATCH', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ viewer_download: false })
@@ -130,14 +142,15 @@ Deno.serve(async req => {
           if (!r.ok) report.push({ class: c.name, date: d, warn: '다운로드 끄기 실패 ' + r.status });
         }
       } else {
-        if (cur[d]) continue; // 이미 '확인 필요' 등 메모가 있으면 그대로
-        entry = { url: '', note: `확인 필요: 녹화가 짧음 (가장 긴 것 ${best.len}분, ${list.length}개)` };
+        // 수업 중이거나 아직 처리 중이면 다음 실행을 기다림, 이미 링크·메모가 있으면 그대로
+        if (during || had.url || cur[d] || sorted.some(x => x.live)) continue;
+        entry = { url: '', note: `확인 필요: 녹화가 짧음 (가장 긴 것 ${sorted[0].len}분, ${list.length}개)` };
       }
       const next = { ...(changed.get(c.id) || c) };
       next.recordings = { ...cur, [d]: entry };
       next.updatedAt = new Date().toISOString();
       changed.set(c.id, next);
-      report.push({ class: c.name, date: d, minutes: best.len, url: !!entry.url, note: entry.url ? undefined : entry.note });
+      report.push({ class: c.name, date: d, minutes: best?.len ?? sorted[0].len, url: !!entry.url, early: !!(best && best === early && !done), replaced: !!had.url, note: entry.url ? undefined : entry.note });
     }
 
     if (!dry && changed.size) {
@@ -148,7 +161,7 @@ Deno.serve(async req => {
       const lid = crypto.randomUUID();
       await db.from('items').insert({ collection: 'logs', id: lid, data: { id: lid, at: now, actorName: '줌 자동 연동', action: '녹화본 자동 입력', target: `${report.filter(r => r.url).length}개 회차`, detail: report.map(r => `${r.class} ${r.date}${r.url ? '' : ' (확인 필요)'}`).join(', ').slice(0, 500) } });
     }
-    return reply(200, { from, to, zoomRecordings: recs.length, dry, results: report, ...(dry ? { seen } : {}) });
+    return reply(200, { from, to, zoomRecordings: recs.length, dry, results: report, seen });
   } catch (e) {
     return reply(500, { error: String((e as Error).message || e) });
   }
