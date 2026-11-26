@@ -1376,13 +1376,14 @@
     bg.querySelector('[name=pw]').value = genPassword();
   }
 
+  const fileSize = n => !n ? '' : n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB';
   function pageSettings() {
     loadAccounts();
     const m = me();
     const teams = Store.all('teams');
     const people = Store.all('staff');
     const logs = sortBy(Store.all('logs'), l => l.at).reverse().slice(0, 100);
-    return `<div class="page-head"><div><h1>설정</h1><p>팀 · 직원 · 백업 · 수정 이력</p></div></div>
+    return `<div class="page-head"><div><h1>설정</h1><p>팀 · 직원 · 백업 · 학생 자료실 · 수정 이력</p></div></div>
     <div class="grid g2" style="align-items:start">
       <section class="card"><div class="card-head"><h3>내 계정</h3></div><div class="card-body">
         <div class="row"><span class="av">${initial(m.name)}</span><div class="grow"><b>${esc(m.name)}</b><div class="faint">${esc(m.email)} · ${esc(roleLabel(m))}${m.teamId ? ' · ' + esc(teamFull(m.teamId)) : ''}</div></div></div>
@@ -1404,6 +1405,10 @@
         <p style="margin:0 0 12px">${lastBackup() ? `마지막 백업: <b>${fmtFull(lastBackup().at)}</b> · ${esc(lastBackup().by || '')} <span class="pill ${backupAge() >= 7 ? 'amber' : 'green'}">${backupAge()}일 전</span>` : '<span class="pill amber">아직 백업 기록이 없어요</span>'}</p>
         <div class="row"><button class="btn primary" data-act="backup">백업 파일 받기</button>${isAdmin() ? '<label class="btn">백업 파일 불러오기<input type="file" accept=".json" data-change="restore" hidden></label>' : ''}</div>
         ${!Store.live ? '<div style="margin-top:14px"><button class="btn danger" data-act="demo-reset">데모 데이터 처음으로 되돌리기</button></div>' : ''}
+      </div></section>
+      <section class="card"><div class="card-head"><h3>학생 자료실</h3><label class="btn sm primary">+ 파일 올리기<input type="file" data-change="file-upload" multiple hidden></label></div><div class="card-body">
+        <p class="muted" style="margin-top:0">여기 올린 파일은 모든 학생의 학습 캘린더 '자료' 칸에서 내려받을 수 있어요. (용어집, 줌 사용법 등 · 파일당 50MB까지)</p>
+        <div class="list">${sortBy(Store.all('files'), f => f.createdAt || '').map(f => `<div class="li"><div class="main"><div class="t"><a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a></div><div class="s">${fileSize(f.size)} · ${fmtFull(f.createdAt)}</div></div><button class="btn ghost sm danger" data-act="file-del" data-id="${f.id}">삭제</button></div>`).join('') || '<div class="faint">올린 자료가 없어요</div>'}</div>
       </div></section>
       <section class="card"><div class="card-head"><h3>수정 이력</h3><span class="faint">원장·총괄만 보여요</span></div><div class="card-body">
         ${isAdmin() ? (logs.length ? `<div class="list" style="max-height:360px;overflow:auto">${logs.map(l => `<div class="li"><div class="main"><div class="t" style="font-weight:600">${esc(l.detail || l.action)}</div><div class="s">${esc(l.actorName || '')} · ${fmtFull(l.at)} ${esc((l.at || '').slice(11, 16))}</div></div></div>`).join('')}</div>` : '<div class="faint">기록이 없어요</div>') : '<div class="faint">권한이 없어요</div>'}
@@ -1849,6 +1854,12 @@
       toast('백업 파일을 받았어요. 공용 드라이브에 보관하세요');
       render();
     },
+    'file-del': async el => {
+      const f = Store.get('files', el.dataset.id); if (!f) return;
+      if (!(await confirmBox(`'${f.name}' 자료를 지울까요? 학생 화면에서도 사라져요.`, '삭제'))) return;
+      await Store.deleteFile(f); await Store.log('file-delete', f.id, `학생 자료 삭제: ${f.name}`);
+      toast('삭제했어요'); render();
+    },
     'demo-reset': async () => {
       if (!(await confirmBox('데모 데이터를 처음 상태로 되돌릴까요? 이 브라우저에서 바꾼 내용이 모두 사라져요.', '되돌리기'))) return;
       Store.resetDemo(); location.hash = '#/'; location.reload();
@@ -1876,6 +1887,14 @@
       e.studentIds = Array.from(set); await Store.put('exams', e); render();
     },
     'task-toggle': async el => { const k = Store.get('tasks', el.dataset.id); k.done = el.checked; await Store.put('tasks', k); render(); },
+    'file-upload': async el => {
+      const files = Array.from(el.files || []); if (!files.length) return;
+      const big = files.find(f => f.size > 50 * 1048576);
+      if (big) { toast(`'${big.name}'은(는) 50MB가 넘어서 올릴 수 없어요`); el.value = ''; return; }
+      toast('올리는 중…');
+      for (const f of files) { await Store.uploadFile(f); await Store.log('file-upload', '', `학생 자료 올림: ${f.name}`); }
+      toast(`${files.length}개 올렸어요`); render();
+    },
     restore: async el => {
       const f = el.files[0]; if (!f) return;
       try {

@@ -3,7 +3,7 @@
 // - 실제 모드: Supabase 의 items 테이블 하나에 컬렉션별로 저장, 권한은 DB(RLS)가 판단
 (function () {
   const C = window.HAKSA_CONFIG || {};
-  const COLS = ['teams', 'staff', 'students', 'classes', 'attendance', 'notes', 'meetings', 'tasks', 'exams', 'leads', 'logs', 'settings', 'branchClasses'];
+  const COLS = ['teams', 'staff', 'students', 'classes', 'attendance', 'notes', 'meetings', 'tasks', 'exams', 'leads', 'logs', 'settings', 'branchClasses', 'files'];
   const STUDENT_SCOPED = ['attendance', 'notes', 'meetings', 'tasks'];
   const LS_KEY = 'daegu-haksa-v3';  // 데모 데이터 구조가 바뀌면 숫자를 올림
   const LS_ME = 'daegu-haksa-me';
@@ -204,6 +204,21 @@
       return c;
     },
 
+    // 학생 자료실: 파일은 공개 버킷 student-files, 목록은 files 컬렉션 (직원만 올리기·지우기)
+    async uploadFile(file) {
+      if (!live) throw new Error('데모 모드에서는 파일을 올릴 수 없어요');
+      const ext = (file.name.match(/\.([a-z0-9]{1,8})$/i) || [, 'bin'])[1].toLowerCase();
+      const path = `h/${uid()}.${ext}`;
+      const { error } = await sb.storage.from('student-files').upload(path, file, { contentType: file.type || undefined });
+      if (error) throw error;
+      const url = sb.storage.from('student-files').getPublicUrl(path).data.publicUrl;
+      return Store.put('files', { name: file.name, size: file.size, path, url, createdAt: new Date().toISOString() });
+    },
+    async deleteFile(f) {
+      if (live && f.path) { const { error } = await sb.storage.from('student-files').remove([f.path]); if (error) throw error; }
+      return Store.del('files', f.id);
+    },
+
     // 학생 전용 링크 화면 (로그인 없이 토큰으로)
     async studentView(token) {
       if (live) {
@@ -222,7 +237,9 @@
         attendance: db.attendance.filter(a => a.studentId === s.id).map(({ classId, date, state }) => ({ classId, date, state })),
         tasks: db.tasks.filter(t => t.studentId === s.id && t.shared !== false),
         meetings: db.meetings.filter(m => m.studentId === s.id && !m.done).map(({ date, time, topic }) => ({ date, time, topic })),
-        exams: db.exams.filter(e => (e.studentIds || []).includes(s.id)).map(({ id, name, regStart, regEnd, examDate, examEnd, resultDate, memo }) => ({ id, name, regStart, regEnd, examDate, examEnd, resultDate, memo }))
+        exams: db.exams.filter(e => (e.studentIds || []).includes(s.id)).map(({ id, name, regStart, regEnd, examDate, examEnd, resultDate, memo }) => ({ id, name, regStart, regEnd, examDate, examEnd, resultDate, memo })),
+        allExams: db.exams.map(({ id, name, regStart, regEnd, examDate, examEnd, resultDate, memo }) => ({ id, name, regStart, regEnd, examDate, examEnd, resultDate, memo })),
+        files: db.files.map(({ id, name, size, url }) => ({ id, name, size, url }))
       };
     },
     async studentSetTask(token, taskId, done) {

@@ -209,6 +209,42 @@
       </div></div></section>`;
     }
 
+    // 휴대폰 캘린더 구독 (서버 함수 calendar-feed 가 수업·시험·면담을 .ics 로 줌, 바뀌면 자동 반영)
+    function subscribeBox() {
+      if (!C.SUPABASE_URL || Store.forceDemo) return '';
+      const feed = `${C.SUPABASE_URL.replace(/^https?:/, 'webcal:')}/functions/v1/calendar-feed?t=${encodeURIComponent(token)}`;
+      return `<section class="card"><div class="card-head"><h3>📲 내 휴대폰 캘린더에 추가</h3></div><div class="card-body">
+        <div class="faint" style="margin-bottom:10px">수업 2시간 전 · 개강 3일 전 · 자격증 접수 10일 전 · 5일 전 · 당일 알림. 일정이 바뀌면 자동으로 따라 바뀌어요.</div>
+        <div class="row" style="gap:8px"><a class="btn sm primary" href="${esc(feed)}">아이폰 · 맥 캘린더</a><a class="btn sm" href="https://calendar.google.com/calendar/render?cid=${encodeURIComponent(feed)}" target="_blank" rel="noopener">구글 캘린더 (안드로이드)</a></div>
+      </div></section>`;
+    }
+    // IT 진로 · 적성 검사 (외부 검사 페이지)
+    const careerBox = () => `<a class="card card-pad" style="display:flex;gap:12px;align-items:center;text-decoration:none;color:inherit;background:#0f3b57;color:#fff" href="https://url.kr/mreprs" target="_blank" rel="noopener">
+      <span style="font-size:26px">🧭</span><span style="flex:1"><b style="font-size:15px">IT 진로 · 적성 검사</b><br><span style="font-size:13px;opacity:.85">5분이면 나와 잘 맞는 IT 분야 TOP 3가 보여요</span></span><span class="btn sm" style="background:#fff;color:#0f3b57;border-color:#fff">시작 ›</span></a>`;
+    // 자격증 접수 · 시험 · 발표가 7일 안이거나 진행 중인 것 (학원이 등록한 전체 시험 일정)
+    function examSoonBox() {
+      const until = addDays(t, 7), rows = [];
+      (data.allExams || []).forEach(e => [['접수', e.regStart, e.regEnd], ['시험', e.examDate, e.examEnd], ['발표', e.resultDate]].forEach(([k, a, b]) => {
+        b = b || a;
+        if (!a || a > until || b < t) return;
+        const gcal = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`🎓 ${e.name} ${k}`)}&dates=${a.replace(/-/g, '')}/${addDays(b, 1).replace(/-/g, '')}&details=${encodeURIComponent(e.memo || '')}`;
+        rows.push({ a, html: `<div class="li" style="display:block"><span class="tag exam">${k}</span><b style="font-size:14px">${esc(e.name)}</b>
+          <div class="faint">${fmt(a)}${b !== a ? ' ~ ' + fmt(b) : ''} · ${a <= t ? (b !== a ? `진행 중 · ${dday(b)} 마감` : '오늘') : dday(a)}</div>
+          <a class="btn sm" style="margin-top:6px" href="${esc(gcal)}" target="_blank" rel="noopener">구글 캘린더에 추가</a></div>` });
+      }));
+      if (!rows.length) return '';
+      return `<section class="card"><div class="card-head"><h3>🎓 자격증 접수 · 시험 7일 이내</h3><span class="faint">${rows.length}건</span></div><div class="card-body"><div class="list">${rows.sort((x, y) => x.a.localeCompare(y.a)).map(r => r.html).join('')}</div></div></section>`;
+    }
+    // 학생 자료실 (직원이 관리자 화면 설정에서 올림)
+    const fsize = n => !n ? '' : n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB';
+    function filesBox() {
+      const list = (data.files || []).filter(f => /^https:\/\//i.test(f.url || ''));
+      if (!list.length) return '';
+      return `<section class="card"><div class="card-head"><h3>📎 자료</h3><span class="faint">눌러서 내려받기</span></div><div class="card-body"><div class="list">
+        ${list.map(f => `<a class="li" style="text-decoration:none;color:inherit" href="${esc(f.url)}?download=${encodeURIComponent(f.name)}"><div class="main"><div class="t">${esc(f.name)}</div><div class="s">${fsize(f.size)}</div></div><span class="btn sm">받기 ↓</span></a>`).join('')}
+      </div></div></section>`;
+    }
+
     function side() {
       const list = (byDate[ui.sel] || []);
       const tasks = data.tasks.slice().sort((a, b) => (a.done - b.done) || ((a.due || '9') < (b.due || '9') ? -1 : 1));
@@ -223,11 +259,15 @@
       return `<div class="side">
         ${noticeBox()}
         ${zoomBox()}
+        ${examSoonBox()}
         <section class="card"><div class="card-head"><h3>${fmt(ui.sel)}${ui.sel === t ? ' · 오늘' : ''}</h3>${HOLIDAYS[ui.sel] ? `<span class="pill red">${esc(HOLIDAYS[ui.sel])}</span>` : ''}</div>
           <div class="card-body agenda">${list.length ? list.map(ev).join('') : '<div class="faint">이 날은 일정이 없어요</div>'}</div></section>
         <section class="card"><div class="card-head"><h3>할 일</h3><span class="faint">${tasks.filter(k => !k.done).length}개 남음</span></div><div class="card-body">
           ${tasks.length ? `<div class="list">${tasks.map(k => `<label class="li check"><input type="checkbox" data-task="${esc(k.id)}" ${k.done ? 'checked' : ''}><span class="grow" style="${k.done ? 'text-decoration:line-through;color:var(--ink-3)' : ''}">${esc(k.title)}</span>${k.due ? `<span class="pill ${!k.done && k.due < t ? 'red' : 'outline'}">${fmt(k.due)}</span>` : ''}</label>`).join('')}</div>` : '<div class="faint">지금은 할 일이 없어요</div>'}
         </div></section>
+        ${subscribeBox()}
+        ${careerBox()}
+        ${filesBox()}
         <section class="card"><div class="card-head"><h3>수강 과정</h3><span class="faint">${courses.length}개</span></div><div class="card-body">${courses.map(course).join('') || '<div class="faint">연결된 과정이 없어요</div>'}</div></section>
         ${(data.student.certs || []).length ? `<section class="card"><div class="card-head"><h3>자격증</h3></div><div class="card-body"><div class="list">${data.student.certs.map(c => `<div class="li"><div class="main"><div class="t">${esc(c.name)}</div></div><span class="pill ${c.status === '합격' ? 'green' : c.status === '불합격' ? 'red' : 'amber'}">${esc(c.status)}</span></div>`).join('')}</div></div></section>` : ''}
       </div>`;
