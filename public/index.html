@@ -71,6 +71,38 @@
     .listview .dayrow.today .d { color: var(--brand); }
     .listview .d { font-weight: 800; }
 
+    /* 캘린더 아래 바로가기 (모바일 우선) */
+    .extras { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+    .extras > .x-files { grid-column: 1 / -1; }
+    .x-ico { flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-size: 22px; background: rgba(255, 255, 255, .16); }
+    .x-ico.soft { background: var(--green-soft); width: 38px; height: 38px; font-size: 19px; border-radius: 10px; }
+    .x-career { display: flex; align-items: center; gap: 14px; padding: 18px; border-radius: 18px; color: #fff; text-decoration: none; background: linear-gradient(135deg, #123e5c, #1d6a8a); min-height: 92px; }
+    .x-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    .x-txt b { font-size: 16px; } .x-txt span { font-size: 13px; opacity: .85; line-height: 1.4; }
+    .x-go { flex: none; background: #fff; color: #123e5c; font-weight: 800; font-size: 13.5px; border-radius: 999px; padding: 8px 14px; }
+    .x-sub { padding: 16px 18px; }
+    .x-head { display: flex; gap: 12px; align-items: center; }
+    .x-head b { display: block; font-size: 15.5px; } .x-head span { font-size: 13px; color: var(--ink-2); }
+    .x-bul { margin: 12px 0 14px; padding: 0; list-style: none; display: grid; gap: 5px; font-size: 13px; color: var(--ink-2); }
+    .x-bul li::before { content: '✓'; color: var(--green); font-weight: 800; margin-right: 7px; }
+    .x-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .x-btns .btn { height: 44px; justify-content: center; font-size: 14px; font-weight: 700; }
+    .x-files { padding: 0; overflow: hidden; }
+    .x-files summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 14px 18px; cursor: pointer; font-size: 15.5px; }
+    .x-files summary::-webkit-details-marker { display: none; }
+    .x-fold { margin-left: auto; width: 9px; height: 9px; border-right: 2px solid var(--ink-3); border-bottom: 2px solid var(--ink-3); transform: rotate(45deg); transition: transform .15s; }
+    .x-files[open] .x-fold { transform: rotate(-135deg); }
+    .x-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0 14px 14px; }
+    .x-file { display: flex; align-items: center; gap: 12px; padding: 12px; min-height: 64px; border: 1px solid var(--line); border-radius: 14px; text-decoration: none; color: inherit; background: var(--surface); }
+    .x-file:active { background: var(--surface-2); }
+    .x-badge { flex: none; width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; font-size: 11px; font-weight: 800; }
+    .x-badge.doc { background: var(--red-soft); color: var(--red); }
+    .x-badge.vid { background: var(--blue-soft); color: var(--blue); font-size: 16px; }
+    .x-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .x-name b { font-size: 14px; line-height: 1.35; word-break: keep-all; overflow-wrap: anywhere; }
+    .x-name span { font-size: 12px; color: var(--ink-3); }
+    .x-act { flex: none; font-size: 13px; font-weight: 700; color: var(--brand); }
+
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; }
       .keys { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -83,6 +115,8 @@
       .ev small { display: none; }
       .day .hol { font-size: 9.5px; }
       .key .v { font-size: 21px; }
+      .extras, .x-grid { grid-template-columns: 1fr; }
+      .x-career { padding: 16px; }
     }
   </style>
 </head>
@@ -209,18 +243,18 @@
       </div></div></section>`;
     }
 
-    // 휴대폰 캘린더 구독 (서버 함수 calendar-feed 가 수업·시험·면담을 .ics 로 줌, 바뀌면 자동 반영)
-    function subscribeBox() {
-      if (!C.SUPABASE_URL || Store.forceDemo) return '';
-      const feed = `${C.SUPABASE_URL.replace(/^https?:/, 'webcal:')}/functions/v1/calendar-feed?t=${encodeURIComponent(token)}`;
-      return `<section class="card"><div class="card-head"><h3>📲 내 휴대폰 캘린더에 추가</h3></div><div class="card-body">
-        <div class="faint" style="margin-bottom:10px">수업 2시간 전 · 개강 3일 전 · 자격증 접수 10일 전 · 5일 전 · 당일 알림. 일정이 바뀌면 자동으로 따라 바뀌어요.</div>
-        <div class="row" style="gap:8px"><a class="btn sm primary" href="${esc(feed)}">아이폰 · 맥 캘린더</a><a class="btn sm" href="https://calendar.google.com/calendar/render?cid=${encodeURIComponent(feed)}" target="_blank" rel="noopener">구글 캘린더 (안드로이드)</a></div>
-      </div></section>`;
+    // 캘린더 아래 바로가기: 진로 검사 · 휴대폰 캘린더 구독 · 자료 (모바일 기준 큰 터치 영역)
+    function extras() {
+      const feed = C.SUPABASE_URL && !Store.forceDemo ? `${C.SUPABASE_URL.replace(/^https?:/, 'webcal:')}/functions/v1/calendar-feed?t=${encodeURIComponent(token)}` : '';
+      return `<div class="extras">
+        <a class="x-career" href="https://url.kr/mreprs" target="_blank" rel="noopener">
+          <span class="x-ico">🧭</span><span class="x-txt"><b>IT 진로 · 적성 검사</b><span>5분이면 나와 잘 맞는 IT 분야 TOP 3가 보여요</span></span><span class="x-go">시작 ›</span></a>
+        ${feed ? `<section class="card x-sub"><div class="x-head"><span class="x-ico soft">📲</span><div><b>내 휴대폰 캘린더에 추가</b><span>한 번만 누르면 수업 일정이 휴대폰에 들어가요</span></div></div>
+          <ul class="x-bul"><li>수업 2시간 전 · 개강 3일 전 알림</li><li>자격증 접수 10일 · 5일 전 · 당일 알림</li><li>일정이 바뀌면 자동으로 따라 바뀌어요</li></ul>
+          <div class="x-btns"><a class="btn primary" href="${esc(feed)}">아이폰 · 맥</a><a class="btn" href="https://calendar.google.com/calendar/render?cid=${encodeURIComponent(feed)}" target="_blank" rel="noopener">구글 · 안드로이드</a></div></section>` : ''}
+        ${filesBox()}
+      </div>`;
     }
-    // IT 진로 · 적성 검사 (외부 검사 페이지)
-    const careerBox = () => `<a class="card card-pad" style="display:flex;gap:12px;align-items:center;text-decoration:none;color:inherit;background:#0f3b57;color:#fff" href="https://url.kr/mreprs" target="_blank" rel="noopener">
-      <span style="font-size:26px">🧭</span><span style="flex:1"><b style="font-size:15px">IT 진로 · 적성 검사</b><br><span style="font-size:13px;opacity:.85">5분이면 나와 잘 맞는 IT 분야 TOP 3가 보여요</span></span><span class="btn sm" style="background:#fff;color:#0f3b57;border-color:#fff">시작 ›</span></a>`;
     // 자격증 접수 · 시험 · 발표가 7일 안이거나 진행 중인 것 (학원이 등록한 전체 시험 일정)
     function examSoonBox() {
       const until = addDays(t, 7), rows = [];
@@ -242,9 +276,12 @@
       if (!list.length) return '';
       // 동영상은 내려받지 않고 새 창에서 바로 재생
       const video = f => /\.(mp4|webm|mov|m4v)$/i.test(f.name || '');
-      return `<section class="card"><div class="card-head"><h3>📎 자료</h3><span class="faint">눌러서 보기 · 내려받기</span></div><div class="card-body"><div class="list">
-        ${list.map(f => `<a class="li" style="text-decoration:none;color:inherit" href="${esc(f.url)}${video(f) ? '' : '?download=' + encodeURIComponent(f.name)}"${video(f) ? ' target="_blank" rel="noopener"' : ''}><div class="main"><div class="t">${esc(f.name.replace(/\.[^.]+$/, ''))}</div><div class="s">${video(f) ? '동영상 · ' : ''}${fsize(f.size)}</div></div><span class="btn sm${video(f) ? ' primary' : ''}">${video(f) ? '▶ 보기' : '받기 ↓'}</span></a>`).join('')}
-      </div></div></section>`;
+      const ext = f => ((f.name || '').match(/\.([a-z0-9]+)$/i) || [, '파일'])[1].toUpperCase();
+      return `<details class="card x-files" open><summary><span class="x-ico soft">📎</span><b>학습 자료</b><span class="faint">${list.length}개</span><span class="x-fold"></span></summary>
+        <div class="x-grid">${list.map(f => `<a class="x-file" href="${esc(f.url)}${video(f) ? '' : '?download=' + encodeURIComponent(f.name)}"${video(f) ? ' target="_blank" rel="noopener"' : ''}>
+          <span class="x-badge ${video(f) ? 'vid' : 'doc'}">${video(f) ? '▶' : esc(ext(f))}</span>
+          <span class="x-name"><b>${esc(f.name.replace(/\.[^.]+$/, '').replace(/_/g, ' '))}</b><span>${video(f) ? '동영상 · ' : ''}${fsize(f.size)}</span></span>
+          <span class="x-act">${video(f) ? '보기' : '받기 ↓'}</span></a>`).join('')}</div></details>`;
     }
 
     function side() {
@@ -267,9 +304,6 @@
         <section class="card"><div class="card-head"><h3>할 일</h3><span class="faint">${tasks.filter(k => !k.done).length}개 남음</span></div><div class="card-body">
           ${tasks.length ? `<div class="list">${tasks.map(k => `<label class="li check"><input type="checkbox" data-task="${esc(k.id)}" ${k.done ? 'checked' : ''}><span class="grow" style="${k.done ? 'text-decoration:line-through;color:var(--ink-3)' : ''}">${esc(k.title)}</span>${k.due ? `<span class="pill ${!k.done && k.due < t ? 'red' : 'outline'}">${fmt(k.due)}</span>` : ''}</label>`).join('')}</div>` : '<div class="faint">지금은 할 일이 없어요</div>'}
         </div></section>
-        ${subscribeBox()}
-        ${careerBox()}
-        ${filesBox()}
         <section class="card"><div class="card-head"><h3>수강 과정</h3><span class="faint">${courses.length}개</span></div><div class="card-body">${courses.map(course).join('') || '<div class="faint">연결된 과정이 없어요</div>'}</div></section>
         ${(data.student.certs || []).length ? `<section class="card"><div class="card-head"><h3>자격증</h3></div><div class="card-body"><div class="list">${data.student.certs.map(c => `<div class="li"><div class="main"><div class="t">${esc(c.name)}</div></div><span class="pill ${c.status === '합격' ? 'green' : c.status === '불합격' ? 'red' : 'amber'}">${esc(c.status)}</span></div>`).join('')}</div></div></section>` : ''}
       </div>`;
@@ -303,7 +337,8 @@
         <div class="list" style="margin-top:8px">${monthItems.map(x => `<div class="li"><span class="tag ${x.kind}">${x.kind === 'plan' ? '집에서' : '학원'}</span><div class="main"><div class="t">${esc(x.c.name)}</div><div class="s">${fmt(x.c.startDate)} → ${fmt(x.c.endDate)} · ${(x.c.days || []).map(d => DAYS[d]).join('·')} · ${x.ss.length}회</div></div></div>`).join('')}</div></details>` : ''}
       <div class="layout">
         <div>${ui.view === 'cal' ? calendar() : listView()}
-          <p class="faint" style="margin:8px 2px 0">수업 날짜는 공휴일과 휴강을 빼고 계산했어요. 휴강·보강은 바뀔 수 있으니 멘토 안내를 우선으로 확인하세요.</p></div>
+          <p class="faint" style="margin:8px 2px 0">수업 날짜는 공휴일과 휴강을 빼고 계산했어요. 휴강·보강은 바뀔 수 있으니 멘토 안내를 우선으로 확인하세요.</p>
+          ${extras()}</div>
         ${side()}
       </div>
       <p class="faint" style="text-align:center;margin-top:24px">이 링크는 ${esc(s.name)}님 전용이에요. 다른 사람과 공유하지 마세요.</p>`;
