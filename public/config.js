@@ -6,5 +6,6 @@ window.HAKSA_CONFIG = {
   SUPABASE_URL: 'https://kcearusumvfwoviotypd.supabase.co',
   SUPABASE_ANON_KEY: 'sb_publishable_fm5_XhfRfXQH2bpPcDjGHw_5rL_-I6u',  // publishable 키 (공개용)
   ACADEMY_NAME: '코리아AI아카데미 대구점',
-  SITE_URL: 'https://daegu-haksa.netlify.app/'   // 학생 링크·안내 문구에 쓰는 공식 주소
+  // 2026-11-26: Netlify 사용량 초과(~12/2) 동안 새로 만드는 학생 링크는 GitHub Pages 주소로 (Netlify 가 다시 올라오면 그 주소가 Netlify 로 자동 이동)
+  SITE_URL: 'https://chan63078-dot.github.io/daegu-haksa/'   // 학생 링크·안내 문구에 쓰는 공식 주소
 };
