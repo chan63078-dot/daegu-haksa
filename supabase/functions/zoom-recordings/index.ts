@@ -134,7 +134,9 @@ Deno.serve(async req => {
       let entry;
       if (best) {
         if (had.url === best.m.share_url) continue;
-        entry = { url: best.m.share_url, note: best.m.password || best.m.recording_play_passcode || '', auto: true };
+        // 목록의 recording_play_passcode 는 암호화된 값이라 학생이 칠 수 없음 → 녹화 설정에서 실제 암호를 읽음
+        const pw = await zget(token, `/meetings/${enc(best.m.uuid)}/recordings/settings`).then(s => s.password || '').catch(() => '');
+        entry = { url: best.m.share_url, note: pw || best.m.password || '', auto: true };
         if (!dry) {
           const r = await fetch(`${ZOOM}/meetings/${enc(best.m.uuid)}/recordings/settings`, {
             method: 'PATCH', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ viewer_download: false })
