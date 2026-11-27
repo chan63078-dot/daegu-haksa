@@ -227,7 +227,9 @@
     const zoomLink = e => e.zoom && /^https?:\/\//i.test(e.zoom.url || '') ? `<div style="margin:6px 0 2px"><a class="btn sm" style="background:#2D8CFF;color:#fff;border-color:#2D8CFF" href="${esc(e.zoom.url)}" target="_blank" rel="noopener noreferrer">● 실시간 수업 참여</a>${e.zoom.meetingId || e.zoom.pw ? ` <span class="faint">${[e.zoom.meetingId && 'ID ' + esc(e.zoom.meetingId), e.zoom.pw && '암호 ' + esc(e.zoom.pw)].filter(Boolean).join(' · ')}</span>` : ''}</div>` : '';
     // 녹화본: https 링크만, 새 창으로
     const recNote = n => /^\s*(암호|비밀번호|passcode|password)/i.test(n) ? n : '암호: ' + n;
-    const recLink = e => e.rec && /^https?:\/\//i.test(e.rec.url || '') ? `<div style="margin:6px 0 2px"><a class="btn sm primary" href="${esc(e.rec.url)}" target="_blank" rel="noopener noreferrer">▶ 녹화본 보기</a>${e.rec.note ? ` <b style="font-size:13px">${esc(recNote(e.rec.note))}</b>` : ''}<div class="faint" style="font-size:12px;margin-top:4px">녹화본 유지기간은 일주일이며, 일주일 이후 링크는 삭제됩니다.</div></div>` : '';
+    // 회의가 끊겨 녹화가 나뉜 날은 more 에 2부부터 들어 있음
+    const recParts = r => [r].concat(Array.isArray(r.more) ? r.more : []).filter(p => p && /^https?:\/\//i.test(p.url || ''));
+    const recLink = e => e.rec && /^https?:\/\//i.test(e.rec.url || '') ? `<div style="margin:6px 0 2px">${recParts(e.rec).map((p, i, a) => `<div style="margin-bottom:4px"><a class="btn sm primary" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">▶ 녹화본 ${a.length > 1 ? i + 1 + '부' : '보기'}</a>${p.note ? ` <b style="font-size:13px">${esc(recNote(p.note))}</b>` : ''}</div>`).join('')}<div class="faint" style="font-size:12px;margin-top:4px">녹화본 유지기간은 일주일이며, 일주일 이후 링크는 삭제됩니다.</div></div>` : '';
 
     // 실시간 수업 줌: 날짜와 상관없이 항상 보이게 (종강 전 수업만, 같은 링크는 한 줄로)
     function zoomBox() {

@@ -133,17 +133,28 @@ Deno.serve(async req => {
       const best = done || early;
       let entry;
       if (best) {
+        // 회의가 끊겨 녹화가 나뉜 날: 끝난 녹화 중 10분 이상인 것을 시작 순서대로 모두 (1부, 2부…)
+        const parts = done ? sorted.filter(x => !x.live && x.len >= 10 && x.m.share_url).sort((a, b) => Date.parse(a.m.start_time) - Date.parse(b.m.start_time)) : [best];
         // 줌 share_url 은 부를 때마다 뒤쪽 토큰이 바뀌므로 녹화 uuid 로 같은 녹화인지 봄
-        if (had.rid ? had.rid === best.m.uuid : had.url === best.m.share_url) continue;
-        // 목록의 recording_play_passcode 는 암호화된 값이라 학생이 칠 수 없음 → 녹화 설정에서 실제 암호를 읽음
-        const pw = await zget(token, `/meetings/${enc(best.m.uuid)}/recordings/settings`).then(s => s.password || '').catch(() => '');
-        entry = { url: best.m.share_url, note: pw || best.m.password || '', auto: true, rid: best.m.uuid };
-        if (!dry) {
-          const r = await fetch(`${ZOOM}/meetings/${enc(best.m.uuid)}/recordings/settings`, {
-            method: 'PATCH', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ viewer_download: false })
-          });
-          if (!r.ok) report.push({ class: c.name, date: d, warn: '다운로드 끄기 실패 ' + r.status });
+        const rid = parts.map(x => x.m.uuid).join(',');
+        if (had.rid ? had.rid === rid : had.url === best.m.share_url) continue;
+        const links = [];
+        for (const x of parts) {
+          // 목록의 recording_play_passcode 는 암호화된 값이라 학생이 칠 수 없음.
+          // 실제 암호는 녹화 설정에서 읽고(줌 앱에 cloud_recording:read:recording_settings:admin 권한 필요),
+          // 못 읽으면 줌 안내대로 링크 뒤에 ?pwd=암호화값 을 붙여 암호 없이 바로 열리게 함
+          const pw = await zget(token, `/meetings/${enc(x.m.uuid)}/recordings/settings`).then(s => s.password || '').catch(() => '');
+          const pp = x.m.recording_play_passcode;
+          const url = !pw && pp ? x.m.share_url + (x.m.share_url.includes('?') ? '&' : '?') + 'pwd=' + encodeURIComponent(pp) : x.m.share_url;
+          links.push({ url, note: pw });
+          if (!dry) {
+            const r = await fetch(`${ZOOM}/meetings/${enc(x.m.uuid)}/recordings/settings`, {
+              method: 'PATCH', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ viewer_download: false })
+            });
+            if (!r.ok) report.push({ class: c.name, date: d, warn: '다운로드 끄기 실패 ' + r.status });
+          }
         }
+        entry = { ...links[0], auto: true, rid, ...(links.length > 1 ? { more: links.slice(1) } : {}) };
       } else {
         // 수업 중이거나 아직 처리 중이면 다음 실행을 기다림, 이미 링크·메모가 있으면 그대로
         if (during || had.url || cur[d] || sorted.some(x => x.live)) continue;
@@ -153,7 +164,7 @@ Deno.serve(async req => {
       next.recordings = { ...cur, [d]: entry };
       next.updatedAt = new Date().toISOString();
       changed.set(c.id, next);
-      report.push({ class: c.name, date: d, minutes: best?.len ?? sorted[0].len, url: !!entry.url, early: !!(best && best === early && !done), replaced: !!had.url, note: entry.url ? undefined : entry.note });
+      report.push({ class: c.name, date: d, minutes: best?.len ?? sorted[0].len, parts: entry.more ? entry.more.length + 1 : undefined, url: !!entry.url, early: !!(best && best === early && !done), replaced: !!had.url, note: entry.url ? undefined : entry.note });
     }
 
     if (!dry && changed.size) {

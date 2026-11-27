@@ -1133,7 +1133,7 @@
     return `<section class="card" style="margin-top:16px"><div class="card-head"><h3>회차별 녹화본 <span class="faint" style="font-weight:600">${filled}/${ss.length}</span></h3><span class="faint">링크를 넣고 저장하면 학생 캘린더의 그 날짜에 '녹화본 보기'가 생겨요 · 줌 공유 문구를 통째로 붙여 넣으면 암호는 메모 칸으로 나눠져요${edit ? '' : ' · 입력은 담당 학생이 듣는 수업만 할 수 있어요'}</span></div>
       <div class="card-body" id="rec-form"><div id="rec-scroll" style="position:relative;max-height:440px;overflow:auto;border:1px solid var(--line-2);border-radius:10px"><table class="tbl"><thead style="position:sticky;top:0;background:var(--surface);z-index:1"><tr><th style="width:70px">회차</th><th style="width:110px">날짜</th><th>녹화본 링크</th><th style="width:220px">메모 (예: 암호)</th></tr></thead><tbody>
       ${ss.map((d, i) => { const r = rec[d] || {}; return `<tr data-rec-day="${d}" style="${d === t ? 'background:var(--brand-soft)' : d > t ? 'opacity:.65' : ''}"><td>${i + 1}/${ss.length}</td><td style="white-space:nowrap">${fmt(d)}${d === t ? ' <span class="pill green">오늘</span>' : ''}</td>
-        <td><input class="in" name="url-${d}" value="${esc(r.url || '')}" placeholder="https://zoom.us/rec/..." ${edit ? '' : 'disabled'} style="height:34px"></td>
+        <td><input class="in" name="url-${d}" value="${esc(r.url || '')}" placeholder="https://zoom.us/rec/..." ${edit ? '' : 'disabled'} style="height:34px">${(r.more || []).map((p, j) => `<div class="faint" style="font-size:12px;margin-top:3px">${j + 2}부 (자동): <a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">링크</a>${p.note ? ' · 암호 ' + esc(p.note) : ''}</div>`).join('')}</td>
         <td><input class="in" name="note-${d}" value="${esc(r.note || '')}" ${edit ? '' : 'disabled'} style="height:34px"></td></tr>`; }).join('')}
       </tbody></table></div>
       ${edit ? `<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn primary" data-act="rec-save" data-id="${c.id}">녹화본 저장</button></div>` : ''}</div></section>`;
@@ -1872,7 +1872,9 @@
         if (/\s/.test(url)) { const sp = splitRecording(url); if (sp.url) { url = sp.url; if (sp.pw && !note) note = sp.pw; } }
         if (!url && !note) return;
         if (url && !/^https?:\/\/\S+$/i.test(url)) { bad.push(fmt(d)); return; }
-        rec[d] = { url, note };
+        const old = (c.recordings || {})[d] || {};
+        // 1부 링크를 그대로 두면 자동으로 들어온 2부 이후도 유지 (1부를 바꾸면 손으로 넣은 것으로 보고 뺌)
+        rec[d] = old.more && old.url === url ? { url, note, more: old.more } : { url, note };
       });
       if (bad.length) return toast(`링크는 https:// 로 시작해야 해요: ${bad.join(', ')}`);
       const before = Object.keys(c.recordings || {}).filter(d => (c.recordings[d] || {}).url).length;
