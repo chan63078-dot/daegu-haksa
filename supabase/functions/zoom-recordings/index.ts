@@ -133,10 +133,11 @@ Deno.serve(async req => {
       const best = done || early;
       let entry;
       if (best) {
-        if (had.url === best.m.share_url) continue;
+        // 줌 share_url 은 부를 때마다 뒤쪽 토큰이 바뀌므로 녹화 uuid 로 같은 녹화인지 봄
+        if (had.rid ? had.rid === best.m.uuid : had.url === best.m.share_url) continue;
         // 목록의 recording_play_passcode 는 암호화된 값이라 학생이 칠 수 없음 → 녹화 설정에서 실제 암호를 읽음
         const pw = await zget(token, `/meetings/${enc(best.m.uuid)}/recordings/settings`).then(s => s.password || '').catch(() => '');
-        entry = { url: best.m.share_url, note: pw || best.m.password || '', auto: true };
+        entry = { url: best.m.share_url, note: pw || best.m.password || '', auto: true, rid: best.m.uuid };
         if (!dry) {
           const r = await fetch(`${ZOOM}/meetings/${enc(best.m.uuid)}/recordings/settings`, {
             method: 'PATCH', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ viewer_download: false })
